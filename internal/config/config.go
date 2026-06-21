@@ -90,6 +90,15 @@ func getEnvBool(key string, fallback bool) bool {
 	return v
 }
 
+// GetJWTSecret returns the JWT secret from environment, with a default for development.
+func GetJWTSecret() string {
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		secret = "agentmemory-dev-secret-change-in-production"
+	}
+	return secret
+}
+
 // getEnvDuration returns the duration value of the environment variable named by key,
 // or fallback if the variable is not set or cannot be parsed.
 func getEnvDuration(key string, fallback time.Duration) time.Duration {

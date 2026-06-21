@@ -98,11 +98,23 @@ func (h *RESTHandler) HandleObserve(w http.ResponseWriter, r *http.Request) {
 		importance = 0.5
 	}
 
+	// Default ownership to the authenticated user if not provided in the request
+	ownerType := req.OwnerType
+	ownerUserID := req.OwnerUserID
+	ownerTeamID := req.OwnerTeamID
+
+	if ownerType == "" && ownerUserID == "" {
+		if userID := GetUserIDFromContext(r.Context()); userID != "" {
+			ownerType = "user"
+			ownerUserID = userID
+		}
+	}
+
 	input := service.RecordObservationInput{
 		SessionID:   req.SessionID,
-		OwnerType:   req.OwnerType,
-		OwnerUserID: req.OwnerUserID,
-		OwnerTeamID: req.OwnerTeamID,
+		OwnerType:   ownerType,
+		OwnerUserID: ownerUserID,
+		OwnerTeamID: ownerTeamID,
 		Type:        req.Type,
 		Title:       req.Title,
 		Narrative:   req.Narrative,

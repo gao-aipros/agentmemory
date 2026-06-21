@@ -16,6 +16,7 @@ import (
 func NewRouter(pool *pgxpool.Pool) chi.Router {
 	// Create service dependencies
 	var restHandler *RESTHandler
+	var authHandler *AuthHandler
 	if pool != nil {
 		llmSvc := service.NewLLMService(nil) // No LLM provider configured by default
 		embedSvc := service.NewEmbeddingService(pool, nil)
@@ -34,6 +35,12 @@ func NewRouter(pool *pgxpool.Pool) chi.Router {
 		)
 
 		restHandler = NewRESTHandler(obsSvc, sessionSvc, sessionEndH)
+
+		// Auth services
+		userSvc := service.NewUserService(pool)
+		teamSvc := service.NewTeamService(pool)
+		memberSvc := service.NewTeamMembersService(pool)
+		authHandler = NewAuthHandler(userSvc, teamSvc, memberSvc)
 	}
 	r := chi.NewRouter()
 
@@ -49,21 +56,70 @@ func NewRouter(pool *pgxpool.Pool) chi.Router {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	// Auth middleware placeholder — returns 401 if no Authorization header
-	authMw := stubAuthMiddleware
+	// Auth routes — mixed (some public, some authenticated)
+	r.Route("/v1/auth", func(r chi.Router) {
+		// Public auth endpoints
+		if authHandler != nil {
+			r.Post("/login", authHandler.HandleLogin)
+			r.Post("/register", authHandler.HandleRegister)
+		} else {
+			r.Post("/login", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{"message":"login placeholder"}`))
+			})
+			r.Post("/register", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{"message":"register placeholder"}`))
+			})
+		}
+
+		// Authenticated auth endpoints
+		r.Group(func(r chi.Router) {
+			if pool != nil {
+				r.Use(AuthMiddleware(pool))
+			}
+			if authHandler != nil {
+				r.Get("/me", authHandler.HandleGetMe)
+				r.Get("/keys", authHandler.HandleListAPIKeys)
+				r.Post("/keys", authHandler.HandleCreateAPIKey)
+				r.Delete("/keys/{key_id}", authHandler.HandleDeleteAPIKey)
+			} else {
+				r.Get("/me", func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusOK)
+					w.Write([]byte(`{"message":"profile placeholder"}`))
+				})
+			}
+		})
+	})
 
 	// Authenticated route groups
 	r.Group(func(r chi.Router) {
-		r.Use(authMw)
+		if pool != nil {
+			r.Use(AuthMiddleware(pool))
+		}
 
-		// Root (authenticated)
-		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"service":"agentmemory-v2","version":"2.0.0"}`))
+		// Root and socket routes require session token (UI routes)
+		r.Group(func(r chi.Router) {
+			r.Use(RequireSessionToken)
+
+			r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{"service":"agentmemory-v2","version":"2.0.0"}`))
+			})
+
+			// Socket/WebSocket route
+			r.Get("/v1/socket", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{"message":"Socket endpoint placeholder"}`))
+			})
 		})
 
-		// API routes
+		// API routes (allow both session tokens and API keys)
 		r.Route("/v1/api", func(r chi.Router) {
 			if restHandler != nil {
 				r.Post("/observe", restHandler.HandleObserve)
@@ -84,57 +140,9 @@ func NewRouter(pool *pgxpool.Pool) chi.Router {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(`{"message":"MCP endpoint placeholder"}`))
 		})
-
-		// Socket/WebSocket route
-		r.Get("/v1/socket", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"message":"Socket endpoint placeholder"}`))
-		})
-	})
-
-	// Auth routes — mixed (some public, some authenticated)
-	r.Route("/v1/auth", func(r chi.Router) {
-		// Public auth endpoints (login, register)
-		r.Post("/login", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"message":"login placeholder"}`))
-		})
-		r.Post("/register", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"message":"register placeholder"}`))
-		})
-
-		// Authenticated auth endpoints
-		r.Group(func(r chi.Router) {
-			r.Use(authMw)
-			r.Get("/me", func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(`{"message":"profile placeholder"}`))
-			})
-		})
 	})
 
 	return r
-}
-
-// stubAuthMiddleware is a placeholder authentication middleware.
-// It returns 401 Unauthorized for any request without an Authorization header.
-// This will be replaced with real JWT/API-key authentication in a future phase.
-func stubAuthMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := r.Header.Get("Authorization")
-		if token == "" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte(`{"error":"unauthorized","message":"authentication required"}`))
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }
 
 // slogLoggerMiddleware logs each HTTP request using the structured logger (slog).
