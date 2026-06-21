@@ -1,51 +1,150 @@
 # v2 Team/User Model
 
+Finalized 2026-06-20.
+
 ## Core Design
 
-- **First-class User and Team entities** in PostgreSQL (not env var strings)
-- **Row-level ownership:** every row has `owner_type` (user|team) and visibility
-- **Three visibility levels:** private, team, public
-- **Sharing boundary at Memory layer only** — no data copy for sharing
-- **One-to-many user-team** relationship (many-to-many deferred to future)
+First-class User and Team entities in PostgreSQL — NOT env var strings like v0.
+Every data row carries ownership and visibility metadata.
 
-## Three Modes
+### Row-Level Ownership
+- `owner_type`: `user` or `team` — who owns this row
+- `owner_user_id`: the owning user (when owner_type = user)
+- `owner_team_id`: the owning team (when owner_type = team)
+- `visibility`: `private`, `team`, or `public` — who can see this row
 
-| Mode | Behavior |
-|------|----------|
-| **Owned by User** | Consolidation per-user, auto-share to team |
-| **Owned by Team** | Single team consolidation |
-| **Member Choice** | Per-observation share flag from client |
+### Relationship
+- One-to-many: each user belongs to at most one team at a time
+- Many-to-many is deferred to future
 
-## Mechanics
+---
 
-- Per-obs share flag: `AGENTMEMORY_SHARE_CONSOLIDATED` from client
-- Exit = DELETE from team_members, no cleanup
-- Re-join = full access to history (no time windows)
-- Mesh out of scope; PG replication for cross-instance
+## Three Visibility Levels
 
-## Visibility Rules per Data Type
+| Level | Meaning |
+|-------|---------|
+| **private** | Only the owning user can see |
+| **team** | All members of the owning team can see |
+| **public** | All authorized users on this instance can see |
 
-| Data Type | Visibility |
-|-----------|-----------|
-| Observations | Always private |
-| CompressedObs | Always private |
-| SessionSummary | Always private |
-| Crystals | Always private |
-| Lessons | Always team |
-| Memory | Configurable (private/team/public) |
+Cross-instance visibility via PostgreSQL logical replication — out of scope for v2.
+
+---
+
+## Visibility by Data Type
+
+| Data Type | Visibility Rule | Rationale |
+|-----------|----------------|-----------|
+| Observations | **Always private** | Raw agent interactions contain sensitive context |
+| CompressedObs | **Always private** | Derived from private observations |
+| SessionSummary | **Always private** | Session-level summary, context injection only |
+| Crystals | **Always private** | Action chain narratives are user-specific |
+| Lessons | **Always team** | All sources: crystallize, manual save, consolidation |
+| Memory | **Configurable** | private / team / public, set by consolidation auto-mode or manual save |
+
+### Privacy Escape Hatch
+Use `memory_save` for anything you want to keep private or scope differently from the default.
+This gives users explicit control when the default visibility doesn't fit a specific case.
+
+### Sharing Boundary
+Sharing only happens at the **Memory layer**.
+Observations, CompressedObs, SessionSummary, Crystals are NEVER shared — full stop.
+No data copy for sharing (unlike v0's team-share which duplicated data).
+
+---
+
+## Three Operational Modes
+
+| Mode | Consolidation | Sharing |
+|------|--------------|---------|
+| **Owned by User** | Per-user consolidation | Auto-share consolidated Memory to team |
+| **Owned by Team** | Single team-level consolidation | Memory belongs to team |
+| **Member Choice** | Per-user consolidation | Per-observation share flag from client |
+
+### Mode Mechanics
+
+**Owned by User:**
+- Each user has their own consolidation pipeline
+- After consolidation, Memory can be auto-shared to team
+- Users maintain individual context while contributing to team knowledge
+
+**Owned by Team:**
+- One consolidation run covers the entire team
+- All team members contribute to the same Memory pool
+- Simpler but less personalization
+
+**Member Choice:**
+- Client sets `AGENTMEMORY_SHARE_CONSOLIDATED` flag per observation
+- Maximum flexibility, more client responsibility
+- Default mode for new teams
+
+---
+
+## Membership Lifecycle
+
+### Join
+- User added to `team_members` table with `role` (owner/member)
+- Gains immediate access to all team-visible data
+
+### Exit
+- `DELETE FROM team_members WHERE team_id = ? AND user_id = ?`
+- **No cleanup** of user's private data — it stays
+- User's contributions to team Memory remain with the team
+
+### Re-join
+- Full access to team history is restored
+- No time windows, no partial access
+- User's previous private data (if not deleted) is also accessible again
+
+---
 
 ## Search Logic
 
-Uses pseudo-SQL with `owner_type`, `owner_user_id`, `owner_team_id`, and `visibility`.
+All search queries filter by ownership and visibility:
+
+```sql
+WHERE (
+  -- User's own private data
+  (owner_type = 'user' AND owner_user_id = ? AND visibility = 'private')
+  OR
+  -- Team data visible to this user
+  (owner_type = 'team' AND owner_team_id IN (SELECT team_id FROM team_members WHERE user_id = ?) AND visibility IN ('team', 'public'))
+  OR
+  -- Public data from any user
+  (visibility = 'public')
+)
+```
+
+This ensures:
+- Users always see their own private data
+- Team members see team-scoped data
+- Public data is visible to all authenticated users
+- No cross-team leakage
+
+---
 
 ## Context Injection Scope
 
-1500 token hard limit with per-item one-line summary + recall ID:
+1500 token hard limit, reference format:
 
-| Source | Budget |
-|--------|--------|
-| Pinned Slots | ~300t |
-| Your Recent Sessions | ~250t |
-| Team Lessons | ~200t |
-| Team Shared Memory | ~250t |
-| Project Profile | ~100t |
+| Source | Budget | Description |
+|--------|--------|-------------|
+| Pinned Slots | ~300t | Project-level pinned memory slots |
+| Your Recent Sessions | ~250t | User's own recent session summaries |
+| Team Lessons | ~200t | Lessons learned by team members |
+| Team Shared Memory | ~250t | Team-visible consolidated memories |
+| Project Profile | ~100t | Project-level patterns and conventions |
+
+Each item: one-line summary + recall ID.
+The recall ID lets the agent fetch full content on demand, so context injection stays lean.
+
+---
+
+## v0 → v2 Migration
+
+v0: `TEAM_ID` and `USER_ID` are just env var strings. Team sharing is manual copy. No ACL, no real
+entity model, no data isolation boundary between private and shared. Mesh is instance-level sync,
+not user-level.
+
+v2: Full entity model with PG tables, row-level ACL, proper isolation.
+This is a complete redesign of the team/user architecture — not an incremental change.

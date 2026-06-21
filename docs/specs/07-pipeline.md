@@ -1,6 +1,6 @@
 # v2 Pipeline Architecture
 
-Preserved from v0.
+Preserved from v0. Finalized 2026-06-21.
 
 ## Pipeline Stages
 
@@ -8,36 +8,123 @@ Preserved from v0.
 observe → compress → summarize → consolidate → reflect
 ```
 
-- **Dual Observation/Action pipelines** carry over from v0
-- **Dual Context/Search consumption lines** carry over from v0
+This is the core multi-level extract/aggregate/consolidation pipeline from v0,
+carried forward unchanged in structure.
 
-## Data Flow
+## Dual Pipelines
 
-| Stage | Output | Destination |
-|-------|--------|-------------|
-| observe | raw observation | session store |
-| compress | CompressedObservation | BM25 + Vector dual index |
-| summarize | SessionSummary | Context injection only (NOT search index) |
-| consolidate | SemanticMemory (facts) | reflect + retention (NOT search index) |
-| consolidate | Memory (pattern) → ProceduralMemory | procedural store |
-| consolidate | Graph → Insights | insights store |
-| reflect | higher-order insights | insights table |
+v0 has two parallel pipelines that v2 preserves:
+
+1. **Observation pipeline** — captures what happened (tool calls, prompts, responses)
+2. **Action pipeline** — tracks what needs to be done (tasks, leases, checkpoints)
+
+Both pipelines feed into the same storage and search infrastructure.
+
+## Dual Consumption Lines
+
+1. **Context line** — injects relevant memory into agent sessions (context injection)
+2. **Search line** — powers memory_recall, smart_search, and other query tools
+
+These are separate consumption paths optimized for different use cases:
+context injection needs tight token budgets; search can return richer results.
+
+## Data Flow per Stage
+
+| Stage | Input | Output | Destination |
+|-------|-------|--------|-------------|
+| **observe** | Hook event (tool call, prompt, etc.) | Raw observation | Session store (`observations` table) |
+| **compress** | Raw observation | CompressedObservation | BM25 + Vector dual index (`observations` + `observation_embeddings`) |
+| **summarize** | All session observations | SessionSummary | Context injection ONLY (NOT in search index) |
+| **consolidate** | SessionSummary | SemanticMemory (facts) | reflect + retention (NOT in search index) |
+| **consolidate** | Memory (pattern type) | ProceduralMemory | procedural store (`procedural_memories` table) |
+| **consolidate** | Graph relationships | Insights | insights store (`insights` table) |
+| **reflect** | SemanticMemory + Insights | Higher-order insights | insights reinforcement + decay |
+
+### Key Rules
+
+- **SessionSummary goes to context injection only** — it is deliberately excluded from the search index to avoid polluting search results with session-level noise
+- **CompressedObservation goes to BM25+Vector dual index** — this is the primary searchable memory unit
+- **SemanticMemory is consumed by reflect + retention** — it feeds higher-order reasoning but is NOT directly searchable
+- **Consolidation inputs are typed:**
+  - SessionSummary → SemanticMemory (individual facts)
+  - Memory (pattern type) → ProceduralMemory (workflows, procedures)
+  - Graph relationships → Insights (concept clusters)
+
+---
 
 ## Context Injection
 
-- **Hard limit:** 1500 tokens
-- **Format:** Each item = one-line summary + recall ID (reference format)
-- **5 source buckets** (see 06-team-user.md for budget table)
+### Hard Limit
+1500 tokens total — enforced at assembly time, not per-source.
+
+### Sources and Budgets
+
+| Source | Budget | Content |
+|--------|--------|---------|
+| Pinned Slots | ~300t | Project-level pinned slots (persona, guidance, pending_items, etc.) |
+| Your Recent Sessions | ~250t | User's own recent session summaries, most recent first |
+| Team Lessons | ~200t | Team lessons sorted by confidence, not deleted |
+| Team Shared Memory | ~250t | Team-visible consolidated memories, latest versions |
+| Project Profile | ~100t | Project-level patterns: top concepts, common errors, conventions |
+
+### Format
+Each item: **one-line summary + recall ID**.
+The agent sees a compact reference list. If an item looks relevant, the agent
+can fetch the full content via `memory_recall` with the recall ID.
+
+### Activation
+Controlled by `AGENTMEMORY_INJECT_CONTEXT` env var.
+Only three hooks inject context:
+- **SessionStart** — initial context load
+- **PreToolUse** — enriched context (file-specific search before tool execution)
+- **PreCompact** — context refresh before context window compaction
+
+SubagentStart does NOT inject context (subagent tasks are narrow, adding context
+would waste tokens on irrelevant information).
+
+---
 
 ## Implementation Rule: v0 as Living Spec
 
-- v0 is v2's **behavioral spec**, not a code template
-- When unclear: read v0 source for behavior — what functions do, how pipeline connects, how data flows
-- v0 source: https://github.com/Noodle05/agentmemory
-- Reference behavior semantics, don't copy code (TS → Go, entirely different implementation)
+v0 is v2's **behavioral spec**, not a code template.
 
-## Deferred Gaps
+### What This Means
+- When unsure how something should work: **read the v0 source**
+- Understand: what functions do, how the pipeline connects, how data flows
+- Reference behavior semantics, NOT code structure
+- TS → Go is an entirely different implementation — copy the WHAT, not the HOW
 
-- Pipeline inter-connections (observation → action auto-derivation)
-- Crystals/auto timer fallback
-- ProceduralMemory consumer
+### v0 Source
+https://github.com/Noodle05/agentmemory
+
+### Key Files to Reference
+- `src/functions/observe.ts` — observation capture logic
+- `src/functions/compress.ts` — compression/extraction logic
+- `src/functions/summarize.ts` — session summarization
+- `src/functions/consolidate.ts` — consolidation pipeline
+- `src/functions/context.ts` — context injection assembly
+- `src/functions/team.ts` — team sharing logic (v0 reference, v2 redesigns this)
+- `src/types.ts` — data type definitions
+- `src/config.ts` — configuration surface
+
+---
+
+## Database Access Rules
+
+- **pgxpool:** connection pool management — acquire, use, release
+- **sqlc:** all CRUD and queries — no raw SQL in Go code, ever
+- **SQL files:** all queries in `internal/db/queries/*.sql`, compiled to type-safe Go
+- **ParadeDB/pgvector/WITH RECURSIVE:** pass through sqlc — sqlc treats unrecognized syntax as opaque SQL, generates correct Go wrappers with zero runtime overhead
+
+---
+
+## Architecture Gaps (Deferred)
+
+These are explicitly NOT in v2 scope:
+
+1. **Pipeline inter-connections** — auto-deriving actions from observations
+2. **Crystals/auto timer fallback** — timer-based crystallization trigger
+3. **ProceduralMemory consumer** — nothing reads procedural_memories yet
+
+These are architectural gaps that exist in the pipeline design but are deferred
+until after the core migration is complete and stable.
