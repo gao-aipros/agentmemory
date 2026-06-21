@@ -94,7 +94,7 @@ CREATE TABLE observations (
     embedding_model TEXT,
     user_id         TEXT REFERENCES users(id) ON DELETE SET NULL,
     visibility      TEXT NOT NULL DEFAULT 'private',
-    PRIMARY KEY (session_id, id)
+    PRIMARY KEY (id)
 );
 
 CREATE INDEX idx_obs_bm25 ON observations USING bm25 (id, title, narrative, facts) WITH (key_field = 'id');
@@ -108,20 +108,16 @@ CREATE INDEX idx_obs_session_ts    ON observations (session_id, timestamp DESC);
 -- ============ Observation Embedding（多 model） ============
 
 CREATE TABLE observation_embeddings (
-    observation_id  TEXT NOT NULL,
-    session_id      TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    observation_id  TEXT NOT NULL REFERENCES observations(id) ON DELETE CASCADE,
     model           TEXT NOT NULL,
     dimension       INT NOT NULL,
     embedding       VECTOR,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (observation_id, model),
-    FOREIGN KEY (session_id, observation_id)
-        REFERENCES observations(session_id, id) ON DELETE CASCADE
+    PRIMARY KEY (observation_id, model)
 );
 
-CREATE INDEX idx_obs_emb_hnsv    ON observation_embeddings USING hnsw (embedding vector_cosine_ops);
-CREATE INDEX idx_obs_emb_session ON observation_embeddings (session_id);
-CREATE INDEX idx_obs_emb_model   ON observation_embeddings (model);
+CREATE INDEX idx_obs_emb_hnsv  ON observation_embeddings USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX idx_obs_emb_model ON observation_embeddings (model);
 
 -- ============ Session Summary ============
 
@@ -419,5 +415,5 @@ CREATE INDEX idx_audit_timestamp ON audit_log (timestamp);
 CREATE INDEX idx_audit_operation ON audit_log (operation);
 
 -- ============
--- 25 tables, 42 indexes
+-- 25 tables, 41 indexes
 -- ============

@@ -100,20 +100,52 @@ No data copy for sharing (unlike v0's team-share which duplicated data).
 
 ## Search Logic
 
-All search queries filter by ownership and visibility:
+Search queries filter by ownership and visibility. The exact columns differ by table:
+
+### observations, session_summaries, crystals (user-owned, no team ownership)
 
 ```sql
 WHERE (
-  -- User's own private data
-  (owner_type = 'user' AND owner_user_id = ? AND visibility = 'private')
+  -- User's own data (always private for observations)
+  (user_id = ?)
   OR
-  -- Team data visible to this user
-  (owner_type = 'team' AND owner_team_id IN (SELECT team_id FROM team_members WHERE user_id = ?) AND visibility IN ('team', 'public'))
-  OR
-  -- Public data from any user
+  -- Public data (not applicable for observations which are always private,
+  -- but session_summaries/crystals may have broader visibility in future)
   (visibility = 'public')
 )
 ```
+
+These tables have `user_id` + `visibility` columns. No `owner_type` — they are always user-owned.
+
+### memories (user or team owned, configurable visibility)
+
+```sql
+WHERE (
+  -- User's own memories
+  (owner_type = 'user' AND user_id = ? AND visibility = 'private')
+  OR
+  -- Team memories visible to this user
+  (owner_type = 'team' AND team_id IN (
+    SELECT team_id FROM team_members WHERE user_id = ?
+  ) AND visibility IN ('team', 'public'))
+  OR
+  -- Public memories from any user
+  (visibility = 'public')
+)
+```
+
+The `memories` table has `owner_type`, `user_id`, `team_id`, `visibility`.
+
+### lessons (always team-scoped)
+
+```sql
+WHERE (
+  team_id IN (SELECT team_id FROM team_members WHERE user_id = ?)
+  AND deleted = false
+)
+```
+
+The `lessons` table has `user_id`, `team_id`, `deleted`. Visibility is always team.
 
 This ensures:
 - Users always see their own private data
