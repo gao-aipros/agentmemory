@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/agentmemory/agentmemory/internal/store"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -54,7 +56,7 @@ func (s *SessionService) GetActiveSession(ctx context.Context, userID string) (*
 	session, err := s.queries.GetActiveSession(ctx, userID)
 	if err != nil {
 		// If no rows, return nil
-		if err.Error() == "no rows in result set" {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to get active session: %w", err)

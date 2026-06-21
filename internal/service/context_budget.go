@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 // ContextBudget defines the token budget for context injection.
@@ -150,7 +151,7 @@ func ApplyBudget(assembled *AssembledContext, budget ContextBudget) string {
 	}
 
 	// Step 4: Build final output with date context
-	now := "2026-06-21" // Use current date
+	now := time.Now().Format("2006-01-02")
 	result := fmt.Sprintf("### Context (AgentMemory v2)\nDate: %s\n\n", now)
 
 	for _, f := range formatted {
