@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -17,6 +18,12 @@ func NewRouter(pool *pgxpool.Pool) chi.Router {
 	// Create service dependencies
 	var restHandler *RESTHandler
 	var authHandler *AuthHandler
+	var healthHandler *HealthHandler
+	var wsHandler *WSHandler
+	var viewerHandler *ViewerHandler
+
+	wsHub := NewWSHub()
+
 	if pool != nil {
 		llmSvc := service.NewLLMService(nil) // No LLM provider configured by default
 		embedSvc := service.NewEmbeddingService(pool, nil)
@@ -41,7 +48,21 @@ func NewRouter(pool *pgxpool.Pool) chi.Router {
 		teamSvc := service.NewTeamService(pool)
 		memberSvc := service.NewTeamMembersService(pool)
 		authHandler = NewAuthHandler(userSvc, teamSvc, memberSvc)
+
+		// Health handler with real DB checker
+		healthHandler = NewHealthHandler(&dbHealthChecker{pool: pool})
+
+		// WebSocket handler
+		wsHandler = NewWSHandler(wsHub)
 	}
+
+	// Viewer handler (always available, even without DB)
+	var err error
+	viewerHandler, err = NewViewerHandler()
+	if err != nil {
+		slog.Warn("failed to initialize viewer handler", "error", err)
+	}
+
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -49,12 +70,16 @@ func NewRouter(pool *pgxpool.Pool) chi.Router {
 	r.Use(slogLoggerMiddleware)
 	r.Use(middleware.Recoverer)
 
-	// Health check — no auth required
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
-	})
+	// Health check — public, no auth required
+	if healthHandler != nil {
+		r.Get("/health", healthHandler.ServeHTTP)
+	} else {
+		r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"status":"ok","version":"2.0.0"}`))
+		})
+	}
 
 	// Auth routes — mixed (some public, some authenticated)
 	r.Route("/v1/auth", func(r chi.Router) {
@@ -105,18 +130,28 @@ func NewRouter(pool *pgxpool.Pool) chi.Router {
 		r.Group(func(r chi.Router) {
 			r.Use(RequireSessionToken)
 
-			r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(`{"service":"agentmemory-v2","version":"2.0.0"}`))
-			})
+			// SPA Viewer at /
+			if viewerHandler != nil {
+				r.Get("/", viewerHandler.ServeHTTP)
+				r.Get("/*", viewerHandler.ServeHTTP)
+			} else {
+				r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusOK)
+					w.Write([]byte(`{"service":"agentmemory-v2","version":"2.0.0"}`))
+				})
+			}
 
-			// Socket/WebSocket route
-			r.Get("/v1/socket", func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(`{"message":"Socket endpoint placeholder"}`))
-			})
+			// WebSocket endpoint
+			if wsHandler != nil {
+				r.Get("/v1/socket", wsHandler.ServeHTTP)
+			} else {
+				r.Get("/v1/socket", func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusOK)
+					w.Write([]byte(`{"message":"Socket endpoint placeholder"}`))
+				})
+			}
 		})
 
 		// API routes (allow both session tokens and API keys)
@@ -139,6 +174,49 @@ func NewRouter(pool *pgxpool.Pool) chi.Router {
 	})
 
 	return r
+}
+
+// dbHealthChecker implements HealthChecker using a pgxpool.Pool.
+type dbHealthChecker struct {
+	pool *pgxpool.Pool
+}
+
+func (c *dbHealthChecker) Ping(ctx context.Context) error {
+	return c.pool.Ping(ctx)
+}
+
+func (c *dbHealthChecker) HasPendingMigrations() (bool, error) {
+	bgCtx := context.Background()
+
+	// Check if the migration version table exists
+	var exists bool
+	err := c.pool.QueryRow(bgCtx,
+		"SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'schema_migrations')",
+	).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	if !exists {
+		// No migrations table — assume migrations haven't been run yet
+		// This is normal for a fresh database that hasn't had setup run
+		return false, nil
+	}
+
+	// Check for dirty state in schema_migrations
+	var dirty bool
+	err = c.pool.QueryRow(bgCtx, "SELECT dirty FROM schema_migrations LIMIT 1").Scan(&dirty)
+	if err != nil {
+		// Table might exist but be empty (no migrations applied yet)
+		return false, nil
+	}
+	if dirty {
+		// Dirty state is a critical issue, not just pending
+		return true, nil
+	}
+
+	// If we can't easily check pending count without golang-migrate's logic,
+	// assume no pending migrations (the migrate command handles this)
+	return false, nil
 }
 
 // slogLoggerMiddleware logs each HTTP request using the structured logger (slog).

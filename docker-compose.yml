@@ -1,0 +1,25 @@
+services:
+  db:
+    image: paradedb/paradedb:0.24.1-pg18
+    environment:
+      POSTGRES_USER: agentmemory
+      POSTGRES_PASSWORD: agentmemory
+      POSTGRES_DB: agentmemory
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentmemory"]
+      interval: 5s
+      retries: 5
+  agentmemory:
+    build: .
+    ports: ["8080:8080"]
+    environment:
+      DB_URL: postgres://agentmemory:agentmemory@db:5432/agentmemory?sslmode=disable
+      JWT_SECRET: change-me-in-production
+      MIGRATE_ON_STARTUP: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+volumes:
+  pgdata:

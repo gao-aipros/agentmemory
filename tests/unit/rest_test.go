@@ -271,13 +271,14 @@ func TestRESTContentTypeHeaders(t *testing.T) {
 	r := handler.NewRouter(nil)
 
 	endpoints := []struct {
-		method string
-		path   string
-		body   string
+		method     string
+		path       string
+		body       string
+		expectedCT string
 	}{
-		{"GET", "/health", ""},
-		{"POST", "/v1/auth/login", `{"email":"a@b.com","password":"pw"}`},
-		{"GET", "/", ""},
+		{"GET", "/health", "", "application/json"},
+		{"POST", "/v1/auth/login", `{"email":"a@b.com","password":"pw"}`, "application/json"},
+		{"GET", "/", "", "text/html"},
 	}
 
 	for _, ep := range endpoints {
@@ -293,8 +294,8 @@ func TestRESTContentTypeHeaders(t *testing.T) {
 			r.ServeHTTP(rec, req)
 
 			ct := rec.Header().Get("Content-Type")
-			assert.Equal(t, "application/json", ct,
-				"endpoint %s %s should return application/json", ep.method, ep.path)
+			assert.Contains(t, ct, ep.expectedCT,
+				"endpoint %s %s should return %s", ep.method, ep.path, ep.expectedCT)
 		})
 	}
 }
