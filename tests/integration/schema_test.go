@@ -10,17 +10,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// runMigrations reads the up migration SQL file and executes it against the test database.
+// runMigrations reads all up migration SQL files and executes them against the test database.
 func runMigrations(t *testing.T, db *TestDB) {
 	t.Helper()
 
-	migrationPath := filepath.Join("..", "..", "migrations", "001_initial_schema.up.sql")
-	sqlBytes, err := os.ReadFile(migrationPath)
-	require.NoError(t, err, "failed to read migration file: %s", migrationPath)
+	migrations := []string{
+		"001_initial_schema.up.sql",
+		"002_observations.up.sql",
+		"003_embeddings.up.sql",
+		"004_compressed.up.sql",
+		"005_summaries.up.sql",
+		"006_memories.up.sql",
+	}
 
 	ctx := context.Background()
-	_, err = db.Pool.Exec(ctx, string(sqlBytes))
-	require.NoError(t, err, "failed to run migration")
+	for _, m := range migrations {
+		migrationPath := filepath.Join("..", "..", "migrations", m)
+		sqlBytes, err := os.ReadFile(migrationPath)
+		require.NoError(t, err, "failed to read migration file: %s", migrationPath)
+
+		_, err = db.Pool.Exec(ctx, string(sqlBytes))
+		require.NoError(t, err, "failed to run migration: %s", m)
+	}
 }
 
 // =============================================================================

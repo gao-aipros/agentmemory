@@ -49,7 +49,7 @@ func main() {
 	}
 
 	// Create HTTP router
-	router := handler.NewRouter()
+	router := handler.NewRouter(pool)
 
 	// Configure HTTP server
 	addr := fmt.Sprintf(":%d", cfg.Port)

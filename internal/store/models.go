@@ -6,6 +6,7 @@ package store
 
 import (
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/pgvector/pgvector-go"
 )
 
 type ApiKey struct {
@@ -18,6 +19,81 @@ type ApiKey struct {
 	ExpiresAt  pgtype.Timestamptz
 }
 
+type CompressedEmbedding struct {
+	CompressedID string
+	Embedding    *pgvector.Vector
+	Model        string
+	CreatedAt    pgtype.Timestamptz
+}
+
+type CompressedObservation struct {
+	ID             string
+	ObservationIds []string
+	SessionID      string
+	Visibility     string
+	CompressedText string
+	Concepts       []string
+	CreatedAt      pgtype.Timestamptz
+}
+
+type Lesson struct {
+	ID               string
+	TeamID           *string
+	Visibility       string
+	Content          string
+	Context          *string
+	Confidence       float64
+	Source           string
+	CreatedAt        pgtype.Timestamptz
+	LastReinforcedAt pgtype.Timestamptz
+}
+
+type LessonReinforcement struct {
+	ID              string
+	LessonID        string
+	ObservationID   *string
+	ConfidenceDelta float64
+	CreatedAt       pgtype.Timestamptz
+}
+
+type Memory struct {
+	ID          string
+	OwnerType   string
+	OwnerUserID *string
+	OwnerTeamID *string
+	Visibility  string
+	Content     string
+	Concepts    []string
+	Source      string
+	Confidence  float64
+	CreatedAt   pgtype.Timestamptz
+}
+
+type Observation struct {
+	ID          string
+	SessionID   string
+	OwnerType   string
+	OwnerUserID *string
+	OwnerTeamID *string
+	Visibility  string
+	Type        string
+	Title       string
+	Narrative   string
+	Facts       *string
+	Concepts    []string
+	Files       []string
+	Importance  float64
+	Timestamp   pgtype.Timestamptz
+	CreatedAt   pgtype.Timestamptz
+}
+
+type ObservationEmbedding struct {
+	ObservationID string
+	Embedding     *pgvector.Vector
+	Model         string
+	CreatedAt     pgtype.Timestamptz
+}
+
 type Session struct {
 	ID        string
 	UserID    string
@@ -25,6 +101,15 @@ type Session struct {
 	StartedAt pgtype.Timestamptz
 	EndedAt   pgtype.Timestamptz
 	Status    string
+}
+
+type SessionSummary struct {
+	ID          string
+	SessionID   string
+	Visibility  string
+	SummaryText string
+	Concepts    []string
+	CreatedAt   pgtype.Timestamptz
 }
 
 type Team struct {

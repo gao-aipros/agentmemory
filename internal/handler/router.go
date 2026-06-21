@@ -5,12 +5,36 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/agentmemory/agentmemory/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // NewRouter creates and configures the chi HTTP router with middleware and route groups.
-func NewRouter() chi.Router {
+// If pool is nil, the router is created without database-backed handlers.
+func NewRouter(pool *pgxpool.Pool) chi.Router {
+	// Create service dependencies
+	var restHandler *RESTHandler
+	if pool != nil {
+		llmSvc := service.NewLLMService(nil) // No LLM provider configured by default
+		embedSvc := service.NewEmbeddingService(pool, nil)
+		compressor := service.NewCompressionService(pool, llmSvc, embedSvc)
+		obsSvc := service.NewObservationService(pool, compressor)
+		sessionSvc := service.NewSessionService(pool)
+
+		// Summarization and consolidation depend on LLM
+		summarizer := service.NewSummarizationService(pool, llmSvc)
+		mode := service.DefaultConsolidationMode("member_choice", false)
+		consolidator := service.NewConsolidationService(pool, llmSvc, mode)
+		reflector := service.NewReflectionService(pool, 3600)
+
+		sessionEndH := service.NewSessionEndHandler(
+			sessionSvc, summarizer, consolidator, reflector,
+		)
+
+		restHandler = NewRESTHandler(obsSvc, sessionSvc, sessionEndH)
+	}
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -41,11 +65,17 @@ func NewRouter() chi.Router {
 
 		// API routes
 		r.Route("/v1/api", func(r chi.Router) {
-			r.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(`{"message":"API endpoint placeholder"}`))
-			})
+			if restHandler != nil {
+				r.Post("/observe", restHandler.HandleObserve)
+				r.Post("/session/end", restHandler.HandleEndSession)
+				r.Post("/session/commit", restHandler.HandleCommitSession)
+			} else {
+				r.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusOK)
+					w.Write([]byte(`{"message":"API endpoint placeholder — no database configured"}`))
+				})
+			}
 		})
 
 		// MCP route
