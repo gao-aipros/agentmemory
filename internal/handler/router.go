@@ -65,7 +65,10 @@ func NewRouter(pool *pgxpool.Pool) chi.Router {
 
 	r := chi.NewRouter()
 
-	// Global middleware
+	// Global middleware — applied to ALL routes
+	r.Use(SecurityHeadersMiddleware) // Security headers first (set on every response)
+	r.Use(SanitizeInputMiddleware)   // Strip HTML tags from query parameters (XSS prevention)
+	r.Use(RateLimitMiddleware)       // Rate limiting placeholder (no-op until implemented)
 	r.Use(middleware.RequestID)
 	r.Use(slogLoggerMiddleware)
 	r.Use(middleware.Recoverer)

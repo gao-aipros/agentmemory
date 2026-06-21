@@ -53,7 +53,8 @@ func NewServiceBundle(pool *pgxpool.Pool) *ServiceBundle {
 	mode := service.DefaultConsolidationMode("member_choice", false)
 	consolidator := service.NewConsolidationService(pool, llmSvc, mode)
 	reflector := service.NewReflectionService(pool, 3600)
-	ctxSvc := service.NewContextService(pool, embedSvc, service.NewSlotManager(pool))
+	slotSvc := service.NewSlotService(pool)
+	ctxSvc := service.NewContextService(pool, embedSvc, slotSvc)
 	evictSvc := service.NewEvictionService(pool)
 	sessionEndH := service.NewSessionEndHandler(sessionSvc, summarizer, consolidator, reflector)
 

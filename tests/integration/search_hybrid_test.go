@@ -93,29 +93,24 @@ func TestHybridSearch_EmptyResults(t *testing.T) {
 	assert.Empty(t, results, "search for nonexistent query should return empty results")
 }
 
-// RunMigrations applies all migration files to the test database.
-func RunMigrations(pool *pgxpool.Pool) error {
-	migrations := []string{
-		migration001,
-		migration002,
-		migration003,
-		migration004,
-		migration005,
-		migration006,
-		migration007,
-	}
-	ctx := context.Background()
-	for _, m := range migrations {
-		if _, err := pool.Exec(ctx, m); err != nil {
-			return err
-		}
-	}
-	return nil
+// SeedTestObservations inserts test data for search testing.
+func SeedTestUser(pool *pgxpool.Pool) error {
+	_, err := pool.Exec(context.Background(), `
+		INSERT INTO users (id, email, password_hash, name) VALUES
+		('user-001', 'test@test.com', '$2a$12$test', 'Test User')
+		ON CONFLICT DO NOTHING
+	`)
+	return err
 }
 
 // SeedTestObservations inserts test data for search testing.
 func SeedTestObservations(pool *pgxpool.Pool) error {
 	ctx := context.Background()
+
+	// Ensure test user exists (required by FK constraint)
+	if err := SeedTestUser(pool); err != nil {
+		return err
+	}
 
 	// Create test sessions first
 	_, err := pool.Exec(ctx, `
@@ -220,8 +215,8 @@ func SeedTestGraph(pool *pgxpool.Pool) error {
 
 	return nil
 }
-
-// Embedded migration SQL for integration tests.
+// All migration SQL is now read from the actual migration files on disk
+// via RunAllMigrations() in helpers_test.go — no more embedded duplication.
 const migration001 = `
 CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,

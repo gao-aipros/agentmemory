@@ -20,40 +20,20 @@ type AssembledContext struct {
 	WorkingMemory string
 }
 
-// SlotManager is a minimal interface for reading memory slots.
-type SlotManager struct {
-	queries *store.Queries
-}
-
-// NewSlotManager creates a new SlotManager.
-func NewSlotManager(pool *pgxpool.Pool) *SlotManager {
-	return &SlotManager{
-		queries: store.New(pool),
-	}
-}
-
-// GetSlot returns the content of a named slot, or empty string if not found.
-func (m *SlotManager) GetSlot(ctx context.Context, label string) (string, error) {
-	// Slots are not yet persisted in the database schema.
-	// This is a placeholder that returns empty for now.
-	// Future: read from a memory_slots table.
-	return "", nil
-}
-
 // ContextService assembles context from 5 source buckets for injection
 // into the agent's prompt at session start, pre-tool-use, and pre-compact hooks.
 type ContextService struct {
 	queries   *store.Queries
 	searchSvc *SearchService
-	slotMgr   *SlotManager
+	slotSvc   *SlotService
 }
 
 // NewContextService creates a new ContextService.
-func NewContextService(pool *pgxpool.Pool, embedSvc *EmbeddingService, slotMgr *SlotManager) *ContextService {
+func NewContextService(pool *pgxpool.Pool, embedSvc *EmbeddingService, slotSvc *SlotService) *ContextService {
 	return &ContextService{
 		queries:   store.New(pool),
 		searchSvc: NewSearchService(pool, embedSvc),
-		slotMgr:   slotMgr,
+		slotSvc:   slotSvc,
 	}
 }
 
@@ -106,64 +86,47 @@ func (s *ContextService) AssembleContext(ctx context.Context, userID string) (*A
 }
 
 // gatherObservations finds recent relevant observations for the user.
+// Uses a single JOIN query to avoid N+1 per-session fetches.
 func (s *ContextService) gatherObservations(ctx context.Context, userID string) (string, error) {
-	sessions, err := s.queries.ListSessionsByUser(ctx, userID)
-	if err != nil || len(sessions) == 0 {
+	observations, err := s.queries.ListObservationsByUserID(ctx, store.ListObservationsByUserIDParams{
+		UserID: userID,
+		Limit:  20,
+	})
+	if err != nil || len(observations) == 0 {
 		return "", err
 	}
 
-	// Limit to 5 most recent sessions
-	if len(sessions) > 5 {
-		sessions = sessions[:5]
-	}
-
 	var parts []string
-	for _, sess := range sessions {
-		obs, err := s.queries.ListObservationsBySession(ctx, sess.ID)
-		if err != nil {
-			continue
-		}
-		for _, o := range obs {
-			if len(parts) >= 20 {
-				break
-			}
-			ts := ""
-			if o.Timestamp.Valid {
-				ts = o.Timestamp.Time.Format("2006-01-02")
-			}
-			parts = append(parts, fmt.Sprintf("[%s] %s: %s",
-				o.ID, ts, truncate(o.Narrative, 150)))
-		}
-		if len(parts) >= 20 {
+	for i, o := range observations {
+		if i >= 20 {
 			break
 		}
+		ts := ""
+		if o.Timestamp.Valid {
+			ts = o.Timestamp.Time.Format("2006-01-02")
+		}
+		parts = append(parts, fmt.Sprintf("[%s] %s: %s",
+			o.ID, ts, truncate(o.Narrative, 150)))
 	}
 
 	return strings.Join(parts, "\n"), nil
 }
 
 // gatherRecap finds recent session summaries.
+// Uses a single JOIN query to avoid N+1 per-session fetches.
 func (s *ContextService) gatherRecap(ctx context.Context, userID string) (string, error) {
-	sessions, err := s.queries.ListSessionsByUser(ctx, userID)
-	if err != nil || len(sessions) == 0 {
+	summaries, err := s.queries.ListSummariesByUserID(ctx, store.ListSummariesByUserIDParams{
+		UserID: userID,
+		Limit:  3,
+	})
+	if err != nil || len(summaries) == 0 {
 		return "", err
 	}
 
-	// Limit to 3 most recent sessions
-	if len(sessions) > 3 {
-		sessions = sessions[:3]
-	}
-
 	var parts []string
-	for _, sess := range sessions {
-		summaries, err := s.queries.ListSummariesBySession(ctx, sess.ID)
-		if err != nil {
-			continue
-		}
-		for _, sum := range summaries {
-			parts = append(parts, fmt.Sprintf("[session %s] %s",
-				sess.ID[:8], truncate(sum.SummaryText, 200)))
-		}
+	for _, sum := range summaries {
+		parts = append(parts, fmt.Sprintf("[session %s] %s",
+			sum.SessionID[:8], truncate(sum.SummaryText, 200)))
 	}
 
 	return strings.Join(parts, "\n"), nil
@@ -196,6 +159,7 @@ func (s *ContextService) gatherLessons(ctx context.Context, userID string) (stri
 }
 
 // gatherGraphNeighbors traverses the graph from recent observations.
+// Uses batch fetch to avoid N+1 for observation details.
 func (s *ContextService) gatherGraphNeighbors(ctx context.Context) (string, error) {
 	seedIds, err := s.getRecentObservationIDs(ctx, 10)
 	if err != nil || len(seedIds) == 0 {
@@ -207,10 +171,23 @@ func (s *ContextService) gatherGraphNeighbors(ctx context.Context) (string, erro
 		return "", err
 	}
 
+	// Batch-fetch all observation details
+	traversedIDs := make([]string, len(traversed))
+	for i, gt := range traversed {
+		traversedIDs[i] = gt.ID
+	}
+
+	obsByID := make(map[string]store.Observation)
+	if batchObs, err := s.queries.GetObservationsByIDs(ctx, traversedIDs); err == nil {
+		for _, o := range batchObs {
+			obsByID[o.ID] = o
+		}
+	}
+
 	var parts []string
 	for _, gt := range traversed {
-		obs, err := s.queries.GetObservation(ctx, gt.ID)
-		if err != nil {
+		obs, ok := obsByID[gt.ID]
+		if !ok {
 			continue
 		}
 		ts := ""
@@ -229,10 +206,10 @@ func (s *ContextService) gatherGraphNeighbors(ctx context.Context) (string, erro
 
 // gatherWorkingMemory retrieves working memory from memory slots.
 func (s *ContextService) gatherWorkingMemory(ctx context.Context) (string, error) {
-	if s.slotMgr == nil {
+	if s.slotSvc == nil {
 		return "", nil
 	}
-	content, err := s.slotMgr.GetSlot(ctx, "working_memory")
+	content, err := s.slotSvc.GetSlot(ctx, "working_memory")
 	if err != nil {
 		return "", nil
 	}

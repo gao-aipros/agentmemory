@@ -10,8 +10,10 @@ import (
 
 // Default connection pool sizing.
 const (
-	DefaultMaxConns = 25
-	DefaultMinConns = 5
+	DefaultMaxConns        = 25
+	DefaultMinConns        = 5
+	DefaultMaxConnLifetime = 30 * time.Minute
+	DefaultMaxConnIdleTime = 5 * time.Minute
 )
 
 // PoolConfig holds the connection pool configuration.
@@ -64,6 +66,12 @@ func NewPool(ctx context.Context, dbURL string) (*pgxpool.Pool, error) {
 
 	poolConfig.MaxConns = cfg.MaxConns
 	poolConfig.MinConns = cfg.MinConns
+
+	// Connection lifecycle: prevent stale connections from lingering indefinitely.
+	// MaxConnLifetime forces connection recycling after 30 minutes.
+	poolConfig.MaxConnLifetime = DefaultMaxConnLifetime
+	// MaxConnIdleTime closes connections idle for more than 5 minutes.
+	poolConfig.MaxConnIdleTime = DefaultMaxConnIdleTime
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {

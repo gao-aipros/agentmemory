@@ -48,9 +48,9 @@ func TestContextInjection_BudgetRespected(t *testing.T) {
 	require.NoError(t, SeedTestObservations(db.Pool))
 	require.NoError(t, SeedTestLessons(db.Pool))
 
-	slotMgr := service.NewSlotManager(db.Pool)
+	slotSvc := service.NewSlotService(db.Pool)
 	embedSvc := service.NewEmbeddingService(db.Pool, nil)
-	ctxSvc := service.NewContextService(db.Pool, embedSvc, slotMgr)
+	ctxSvc := service.NewContextService(db.Pool, embedSvc, slotSvc)
 
 	// Assemble context for a test user
 	assembled, err := ctxSvc.AssembleContext(ctx, "user-001")
@@ -83,9 +83,9 @@ func TestContextInjection_SourceBucketsPopulated(t *testing.T) {
 	require.NoError(t, SeedTestLessons(db.Pool))
 	require.NoError(t, SeedTestGraph(db.Pool))
 
-	slotMgr := service.NewSlotManager(db.Pool)
+	slotSvc := service.NewSlotService(db.Pool)
 	embedSvc := service.NewEmbeddingService(db.Pool, nil)
-	ctxSvc := service.NewContextService(db.Pool, embedSvc, slotMgr)
+	ctxSvc := service.NewContextService(db.Pool, embedSvc, slotSvc)
 
 	assembled, err := ctxSvc.AssembleContext(ctx, "user-001")
 	require.NoError(t, err)
@@ -166,9 +166,9 @@ func TestContextHookManager_SessionStart_Disabled(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, RunMigrations(db.Pool))
 
-	slotMgr := service.NewSlotManager(db.Pool)
+	slotSvc := service.NewSlotService(db.Pool)
 	embedSvc := service.NewEmbeddingService(db.Pool, nil)
-	ctxSvc := service.NewContextService(db.Pool, embedSvc, slotMgr)
+	ctxSvc := service.NewContextService(db.Pool, embedSvc, slotSvc)
 
 	// Gate disabled
 	gate := service.NewContextGateWithValue(false)
@@ -189,9 +189,9 @@ func TestContextFormat_ReferenceFormat(t *testing.T) {
 	require.NoError(t, RunMigrations(db.Pool))
 	require.NoError(t, SeedTestObservations(db.Pool))
 
-	slotMgr := service.NewSlotManager(db.Pool)
+	slotSvc := service.NewSlotService(db.Pool)
 	embedSvc := service.NewEmbeddingService(db.Pool, nil)
-	ctxSvc := service.NewContextService(db.Pool, embedSvc, slotMgr)
+	ctxSvc := service.NewContextService(db.Pool, embedSvc, slotSvc)
 
 	assembled, err := ctxSvc.AssembleContext(ctx, "user-001")
 	require.NoError(t, err)

@@ -47,6 +47,46 @@ func (q *Queries) GetObservation(ctx context.Context, id string) (Observation, e
 	return i, err
 }
 
+const getObservationsByIDs = `-- name: GetObservationsByIDs :many
+SELECT id, session_id, owner_type, owner_user_id, owner_team_id, visibility, type, title, narrative, facts, concepts, files, importance, timestamp, created_at FROM observations WHERE id = ANY($1::text[])
+`
+
+func (q *Queries) GetObservationsByIDs(ctx context.Context, dollar_1 []string) ([]Observation, error) {
+	rows, err := q.db.Query(ctx, getObservationsByIDs, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Observation
+	for rows.Next() {
+		var i Observation
+		if err := rows.Scan(
+			&i.ID,
+			&i.SessionID,
+			&i.OwnerType,
+			&i.OwnerUserID,
+			&i.OwnerTeamID,
+			&i.Visibility,
+			&i.Type,
+			&i.Title,
+			&i.Narrative,
+			&i.Facts,
+			&i.Concepts,
+			&i.Files,
+			&i.Importance,
+			&i.Timestamp,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertObservation = `-- name: InsertObservation :one
 INSERT INTO observations (id, session_id, owner_type, owner_user_id, owner_team_id, visibility, type, title, narrative, facts, concepts, files, importance, timestamp)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
@@ -114,6 +154,55 @@ SELECT id, session_id, owner_type, owner_user_id, owner_team_id, visibility, typ
 
 func (q *Queries) ListObservationsBySession(ctx context.Context, sessionID string) ([]Observation, error) {
 	rows, err := q.db.Query(ctx, listObservationsBySession, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Observation
+	for rows.Next() {
+		var i Observation
+		if err := rows.Scan(
+			&i.ID,
+			&i.SessionID,
+			&i.OwnerType,
+			&i.OwnerUserID,
+			&i.OwnerTeamID,
+			&i.Visibility,
+			&i.Type,
+			&i.Title,
+			&i.Narrative,
+			&i.Facts,
+			&i.Concepts,
+			&i.Files,
+			&i.Importance,
+			&i.Timestamp,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listObservationsByUserID = `-- name: ListObservationsByUserID :many
+SELECT o.id, o.session_id, o.owner_type, o.owner_user_id, o.owner_team_id, o.visibility, o.type, o.title, o.narrative, o.facts, o.concepts, o.files, o.importance, o.timestamp, o.created_at FROM observations o
+JOIN sessions s ON o.session_id = s.id
+WHERE s.user_id = $1
+ORDER BY o.created_at DESC
+LIMIT $2
+`
+
+type ListObservationsByUserIDParams struct {
+	UserID string
+	Limit  int32
+}
+
+func (q *Queries) ListObservationsByUserID(ctx context.Context, arg ListObservationsByUserIDParams) ([]Observation, error) {
+	rows, err := q.db.Query(ctx, listObservationsByUserID, arg.UserID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}

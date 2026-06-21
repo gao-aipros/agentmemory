@@ -12,3 +12,10 @@ SELECT * FROM session_summaries WHERE session_id = $1;
 
 -- name: ListSummariesBySession :many
 SELECT * FROM session_summaries WHERE session_id = $1 ORDER BY created_at DESC;
+
+-- name: ListSummariesByUserID :many
+SELECT ss.* FROM session_summaries ss
+JOIN sessions s ON ss.session_id = s.id
+WHERE s.user_id = $1
+ORDER BY ss.created_at DESC
+LIMIT $2;

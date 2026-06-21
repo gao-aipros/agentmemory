@@ -58,6 +58,46 @@ func (q *Queries) ListSummariesBySession(ctx context.Context, sessionID string) 
 	return items, nil
 }
 
+const listSummariesByUserID = `-- name: ListSummariesByUserID :many
+SELECT ss.id, ss.session_id, ss.visibility, ss.summary_text, ss.concepts, ss.created_at FROM session_summaries ss
+JOIN sessions s ON ss.session_id = s.id
+WHERE s.user_id = $1
+ORDER BY ss.created_at DESC
+LIMIT $2
+`
+
+type ListSummariesByUserIDParams struct {
+	UserID string
+	Limit  int32
+}
+
+func (q *Queries) ListSummariesByUserID(ctx context.Context, arg ListSummariesByUserIDParams) ([]SessionSummary, error) {
+	rows, err := q.db.Query(ctx, listSummariesByUserID, arg.UserID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SessionSummary
+	for rows.Next() {
+		var i SessionSummary
+		if err := rows.Scan(
+			&i.ID,
+			&i.SessionID,
+			&i.Visibility,
+			&i.SummaryText,
+			&i.Concepts,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertSessionSummary = `-- name: UpsertSessionSummary :one
 INSERT INTO session_summaries (id, session_id, visibility, summary_text, concepts)
 VALUES ($1, $2, $3, $4, $5)

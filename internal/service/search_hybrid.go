@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 
 	"github.com/agentmemory/agentmemory/internal/store"
@@ -99,16 +100,25 @@ func (s *SearchService) HybridSearch(ctx context.Context, query string, limit in
 		}
 	}
 
+	// Batch-fetch all observation details in a single query (avoid N+1).
+	obsByID := make(map[string]store.Observation, len(rows))
+	if len(seedIds) > 0 {
+		batchObs, err := s.queries.GetObservationsByIDs(ctx, seedIds)
+		if err == nil {
+			for _, o := range batchObs {
+				obsByID[o.ID] = o
+			}
+		}
+	}
+
 	// Build final ranked results with graph bonus
 	results := make([]SearchResult, 0, len(rows))
 	for _, r := range rows {
 		graphScore := graphScores[r.ID]
 		combinedScore := CombineSearchScores(r.Bm25Score, r.VectorScore, graphScore)
 
-		// Fetch observation details for title/narrative
 		var title, narrative string
-		obs, err := s.queries.GetObservation(ctx, r.ID)
-		if err == nil {
+		if obs, ok := obsByID[r.ID]; ok {
 			title = obs.Title
 			narrative = truncate(obs.Narrative, 200)
 		}
@@ -124,7 +134,7 @@ func (s *SearchService) HybridSearch(ctx context.Context, query string, limit in
 		})
 	}
 
-	// Sort by combined score descending
+	// Sort by combined score descending using stdlib sort.
 	sortSearchResults(results)
 
 	// Apply limit
@@ -137,13 +147,9 @@ func (s *SearchService) HybridSearch(ctx context.Context, query string, limit in
 
 // sortSearchResults sorts results by CombinedScore descending.
 func sortSearchResults(results []SearchResult) {
-	for i := 0; i < len(results); i++ {
-		for j := i + 1; j < len(results); j++ {
-			if results[j].CombinedScore > results[i].CombinedScore {
-				results[i], results[j] = results[j], results[i]
-			}
-		}
-	}
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].CombinedScore > results[j].CombinedScore
+	})
 }
 
 // SearchCompact returns lightweight search results for progressive disclosure.
@@ -165,15 +171,19 @@ func (s *SearchService) SearchCompact(ctx context.Context, query string, limit i
 }
 
 // SearchExpand returns full observation details for the given IDs.
+// Uses a single batch query to avoid N+1.
 func (s *SearchService) SearchExpand(ctx context.Context, ids []string) ([]FullResult, error) {
-	results := make([]FullResult, 0, len(ids))
+	if len(ids) == 0 {
+		return nil, nil
+	}
 
-	for _, id := range ids {
-		obs, err := s.queries.GetObservation(ctx, id)
-		if err != nil {
-			continue // Skip missing observations
-		}
+	observations, err := s.queries.GetObservationsByIDs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch observations: %w", err)
+	}
 
+	results := make([]FullResult, 0, len(observations))
+	for _, obs := range observations {
 		facts := ""
 		if obs.Facts != nil {
 			facts = *obs.Facts
