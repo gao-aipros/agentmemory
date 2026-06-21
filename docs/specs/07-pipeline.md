@@ -109,6 +109,45 @@ https://github.com/Noodle05/agentmemory
 
 ---
 
+## Execution Model (Async/Sync)
+
+| Stage | Execution | Rationale |
+|-------|-----------|-----------|
+| **observe** | Synchronous | Fast — single DB insert. Hook needs immediate ack. |
+| **compress** | Async (goroutine) | May call LLM. Non-blocking — observe returns before compress completes. |
+| **summarize** | Async (triggered by SessionEnd) | Runs once per session. Not on the critical path. |
+| **consolidate** | Async (triggered by SessionEnd) | May call LLM, may take minutes. Runs as background job. |
+| **reflect** | Async (scheduled/timer) | Periodically reinforces or decays insights. No caller waiting. |
+| **context injection** | Synchronous | Must complete before agent receives context. Bounded by 1500-token assembly. |
+
+No external job queue (Redis, etc.) — goroutines + PostgreSQL as the state store.
+Consolidation jobs are tracked in DB, recoverable on restart.
+
+## Error Handling & Degradation
+
+### Provider Failures
+| Failure | Effect | Recovery |
+|---------|--------|----------|
+| Embedding provider down | Vector search returns 0.0 scores. BM25 + graph still work. Search degrades gracefully. | Retry on next search call. No state lost. |
+| LLM provider down | Consolidation and summarization are skipped for this cycle. Observations accumulate uncompressed. Failed jobs marked for retry. | Retry at next scheduled consolidation run. |
+| Vision LLM down | N/A — image processing deferred. | |
+
+### Database Failures
+| Failure | Effect | Recovery |
+|---------|--------|----------|
+| Connection lost mid-observe | 500 response. Hook retries (client-side). | pgxpool reconnects automatically. |
+| Connection lost mid-consolidation | Job marked as failed. No partial state committed (use DB transaction). | Retry on next consolidation cycle. |
+| Migration failure | Server refuses to start. Health check fails. | Manual intervention. |
+
+### General Principles
+- **No silent data loss:** Failed operations either complete or leave a clear failure record.
+- **Graceful degradation:** If one subsystem is down, others continue serving.
+- **Retry with backoff:** Provider calls retry up to 3 times with exponential backoff (1s, 2s, 4s).
+- **Health check reflects reality:** `/health` returns 503 if DB is unreachable or migrations are pending.
+- **No circuit breaker needed for v2:** Single-instance deployment. Add for multi-node later.
+
+---
+
 ## Database Access Rules
 
 - **pgxpool:** connection pool management — acquire, use, release

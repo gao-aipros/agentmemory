@@ -62,7 +62,7 @@ SPA Viewer                    → static files (/), WebSocket (/v1/socket)
 | `/health` | none | Docker health check |
 | `/v1/mcp` | st_, ak_ | MCP Streamable HTTP |
 | `/v1/api/*` | st_, ak_ | REST API |
-| `/v1/auth/login` | none | Login + TOTP, returns JWT |
+| `/v1/auth/login` | none | Login (+ TOTP if enabled), returns JWT |
 | `/v1/auth/keys` | st_ | Manage own API keys |
 | `/v1/socket` | st_ | WebSocket (viewer live updates, v1 protocol) |
 

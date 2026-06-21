@@ -170,6 +170,13 @@ This ensures:
 Each item: one-line summary + recall ID.
 The recall ID lets the agent fetch full content on demand, so context injection stays lean.
 
+The 5 source budgets sum to ~1100 tokens. The remaining ~400 tokens of the 1500-token
+hard limit are consumed by:
+- Section labels and formatting (~50 tokens)
+- Recall IDs per item (~10 tokens each, typically 10-15 items = ~100-150 tokens)
+- Newlines and structural whitespace (~50 tokens)
+- Safety margin for tokenizer variance (~150-200 tokens)
+
 ---
 
 ## v0 → v2 Migration

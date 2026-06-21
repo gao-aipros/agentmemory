@@ -30,7 +30,7 @@ Authorization: Bearer ak_<api_key_hash_prefix>
 - Issued by `/v1/auth/login` after successful authentication (including TOTP if enabled)
 - Contains: user_id, team_id (if any), issued_at, expires_at
 - Used for: UI access, viewer WebSocket, initial MCP/session auth
-- Expires: configurable, default TBD
+- Expires: configurable via `JWT_EXPIRY` env var, default 24h
 
 ### ak_ Token (API Key)
 - Type: opaque token with `ak_` prefix

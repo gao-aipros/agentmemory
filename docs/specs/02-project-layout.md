@@ -1,6 +1,6 @@
 # v2 Go Project Layout
 
-Standard Go convention. Module path TBD.
+Standard Go convention. Module path: `github.com/gao-aipros/agentmemory`.
 
 ```
 cmd/agentmemory/main.go      # entry point — wires dependencies, starts HTTP server

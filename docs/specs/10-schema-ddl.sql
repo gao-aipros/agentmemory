@@ -91,9 +91,11 @@ CREATE TABLE observations (
     confidence      REAL,
     embedding_model TEXT,
     user_id         TEXT REFERENCES users(id) ON DELETE SET NULL,
-    visibility      TEXT NOT NULL DEFAULT 'private',
+    visibility      TEXT NOT NULL DEFAULT 'private' CHECK (visibility = 'private'),
     PRIMARY KEY (id)
 );
+
+COMMENT ON COLUMN observations.visibility IS 'Always private — enforced by CHECK constraint. Observations are never shared.';
 
 CREATE INDEX idx_obs_bm25 ON observations USING bm25 (id, title, narrative, facts) WITH (key_field = 'id');
 CREATE INDEX idx_obs_timestamp     ON observations (timestamp);
@@ -156,6 +158,9 @@ CREATE TABLE memories (
     expires_at              TIMESTAMPTZ,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- owner_type 'user' -> user_id required; owner_type 'team' -> team_id required.
+    -- Both may be set simultaneously (user-authored, team-visible memory).
+    -- owner_type determines the primary owner for visibility enforcement.
     CONSTRAINT chk_memory_owner CHECK (user_id IS NOT NULL OR team_id IS NOT NULL)
 );
 
@@ -191,6 +196,11 @@ CREATE TABLE graph_edges (
     source_obs_ids  TEXT[],
     stale           BOOLEAN NOT NULL DEFAULT false,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- Temporal versioning: edges are never updated in-place.
+    -- When an edge changes, the old row gets is_latest=false, tvalid_end=now(),
+    -- and a new row is inserted with tvalid=now(), is_latest=true.
+    -- tcommit: when the fact was committed (may differ from tvalid for future-dated facts)
+    -- superseded_by: points to the newer edge that replaces this one
     tcommit         TIMESTAMPTZ,
     tvalid          TIMESTAMPTZ,
     tvalid_end      TIMESTAMPTZ,
