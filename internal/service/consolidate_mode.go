@@ -47,6 +47,12 @@ func DefaultConsolidationMode(defaultVisibility string, shareConsolidated bool) 
 		mode.Visibility = VisibilityPrivate
 	}
 
+	// When shareConsolidated is true, auto-share memories to the team
+	// by promoting visibility from private to team scope.
+	if shareConsolidated && mode.Visibility == VisibilityPrivate {
+		mode.Visibility = VisibilityTeam
+	}
+
 	return mode
 }
 

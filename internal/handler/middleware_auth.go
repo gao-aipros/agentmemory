@@ -49,10 +49,10 @@ func AuthMiddleware(pool *pgxpool.Pool) func(next http.Handler) http.Handler {
 			switch {
 			case strings.HasPrefix(token, auth.TokenPrefix):
 				// JWT session token
-				user, err = validateSessionToken(token, config.GetJWTSecret(), queries)
+				user, err = validateSessionToken(r.Context(), token, config.GetJWTSecret(), queries)
 			case strings.HasPrefix(token, auth.APIKeyPrefix):
 				// API key — look up by prefix
-				user, err = validateAPIKey(token, queries)
+				user, err = validateAPIKey(r.Context(), token, queries)
 			default:
 				err = fmt.Errorf("unknown token format")
 			}
@@ -97,7 +97,7 @@ func RequireSessionToken(next http.Handler) http.Handler {
 }
 
 // validateSessionToken validates a JWT session token and returns the corresponding user.
-func validateSessionToken(token string, secret string, queries *store.Queries) (*store.User, error) {
+func validateSessionToken(ctx context.Context, token string, secret string, queries *store.Queries) (*store.User, error) {
 	claims, err := auth.ValidateToken(token, secret)
 	if err != nil {
 		return nil, fmt.Errorf("invalid session token: %w", err)
@@ -107,7 +107,7 @@ func validateSessionToken(token string, secret string, queries *store.Queries) (
 		return nil, fmt.Errorf("invalid token: missing user ID")
 	}
 
-	user, err := queries.GetUserByID(context.Background(), claims.UserID)
+	user, err := queries.GetUserByID(ctx, claims.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("user not found: %w", err)
 	}
@@ -116,7 +116,7 @@ func validateSessionToken(token string, secret string, queries *store.Queries) (
 }
 
 // validateAPIKey validates an API key token (by prefix lookup) and returns the corresponding user.
-func validateAPIKey(token string, queries *store.Queries) (*store.User, error) {
+func validateAPIKey(ctx context.Context, token string, queries *store.Queries) (*store.User, error) {
 	// Strip the "ak_" prefix before hashing — stored hash was computed from bare hex key
 	bareKey := strings.TrimPrefix(token, auth.APIKeyPrefix)
 	hash, err := auth.HashKey(bareKey)
@@ -124,7 +124,7 @@ func validateAPIKey(token string, queries *store.Queries) (*store.User, error) {
 		return nil, fmt.Errorf("failed to hash API key: %w", err)
 	}
 
-	apiKey, err := queries.GetAPIKeyByHash(context.Background(), hash)
+	apiKey, err := queries.GetAPIKeyByHash(ctx, hash)
 	if err != nil {
 		return nil, fmt.Errorf("invalid API key")
 	}
@@ -134,11 +134,11 @@ func validateAPIKey(token string, queries *store.Queries) (*store.User, error) {
 		return nil, fmt.Errorf("API key has expired")
 	}
 
-	// Update last_used_at
-	_ = queries.UpdateAPIKeyLastUsed(context.Background(), apiKey.ID)
+	// Update last_used_at (best-effort, use background context to avoid cancel)
+	_ = queries.UpdateAPIKeyLastUsed(context.WithoutCancel(ctx), apiKey.ID)
 
 	// Fetch the user
-	user, err := queries.GetUserByID(context.Background(), apiKey.UserID)
+	user, err := queries.GetUserByID(ctx, apiKey.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("user not found for API key")
 	}
