@@ -26,7 +26,7 @@ CREATE TABLE teams (
     id                  TEXT PRIMARY KEY,
     name                TEXT NOT NULL,
     owner_id            TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    default_visibility  TEXT NOT NULL DEFAULT 'choice',
+    default_visibility  TEXT NOT NULL DEFAULT 'member_choice',
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
