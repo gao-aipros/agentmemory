@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/agentmemory/agentmemory/internal/service"
+	"github.com/agentmemory/agentmemory/internal/store"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -111,4 +112,30 @@ func TestCombineSearchScores_WeightsInvariant(t *testing.T) {
 	assert.Equal(t, 0.4, weights.BM25, "BM25 weight must be 0.4")
 	assert.Equal(t, 0.6, weights.Vector, "vector weight must be 0.6")
 	assert.Equal(t, 0.3, weights.Graph, "graph weight must be 0.3")
+}
+
+// =============================================================================
+// Search Isolation Tests — verify user-scoped search parameters
+// =============================================================================
+
+// TestSearchParams_RequiresOwnerUserID verifies that the search parameter types
+// include an OwnerUserID field for cross-tenant isolation. This is a compile-time
+// assertion: if the store.HybridSearchParams and store.Bm25SearchParams types
+// do NOT include an OwnerUserID field, this test will not compile (RED phase).
+func TestSearchParams_RequiresOwnerUserID(t *testing.T) {
+	// These will fail to compile if OwnerUserID field is missing — that's by design
+	// in the RED phase. Once implemented, these assertions verify the fields exist.
+	bp := store.Bm25SearchParams{
+		QueryText:   "test query",
+		ResultLimit: 10,
+		OwnerUserID: "user-123",
+	}
+	assert.Equal(t, "user-123", bp.OwnerUserID, "Bm25SearchParams must have OwnerUserID field")
+
+	hp := store.HybridSearchParams{
+		QueryText:   "test query",
+		ResultLimit: 10,
+		OwnerUserID: "user-456",
+	}
+	assert.Equal(t, "user-456", hp.OwnerUserID, "HybridSearchParams must have OwnerUserID field")
 }

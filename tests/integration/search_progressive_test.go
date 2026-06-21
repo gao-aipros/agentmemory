@@ -22,7 +22,7 @@ func TestProgressiveDisclosure_CompactResults(t *testing.T) {
 	searchSvc := service.NewSearchService(db.Pool, nil)
 
 	// Get compact results
-	compact, err := searchSvc.SearchCompact(ctx, "PostgreSQL connection", 5)
+	compact, err := searchSvc.SearchCompact(ctx, "PostgreSQL connection", 5, "user-001")
 	require.NoError(t, err)
 	require.NotEmpty(t, compact, "compact search should return results")
 
@@ -47,7 +47,7 @@ func TestProgressiveDisclosure_ExpandByID(t *testing.T) {
 	searchSvc := service.NewSearchService(db.Pool, nil)
 
 	// First get compact results
-	compact, err := searchSvc.SearchCompact(ctx, "database migration", 5)
+	compact, err := searchSvc.SearchCompact(ctx, "database migration", 5, "user-001")
 	require.NoError(t, err)
 	require.NotEmpty(t, compact)
 
@@ -103,7 +103,7 @@ func TestProgressiveDisclosure_TwoStepFlow(t *testing.T) {
 	searchSvc := service.NewSearchService(db.Pool, nil)
 
 	// Step 1: Compact search
-	compact, err := searchSvc.SearchCompact(ctx, "pipeline configuration", 5)
+	compact, err := searchSvc.SearchCompact(ctx, "pipeline configuration", 5, "user-001")
 	require.NoError(t, err)
 
 	if len(compact) == 0 {

@@ -26,13 +26,14 @@ func NewSearchService(pool *pgxpool.Pool, embedSvc *EmbeddingService) *SearchSer
 	}
 }
 
-// HybridSearch performs a combined BM25 + vector search.
+// HybridSearch performs a combined BM25 + vector search scoped to a single user.
 // Steps:
 // 1. Generate an embedding for the query text
 // 2. Execute the hybrid SQL query (BM25 + vector via FULL OUTER JOIN)
 // 3. Optionally run graph traversal to add graph bonus scores
 // Returns ordered search results.
-func (s *SearchService) HybridSearch(ctx context.Context, query string, limit int) ([]SearchResult, error) {
+// userID enforces cross-tenant isolation — results are scoped to this user only.
+func (s *SearchService) HybridSearch(ctx context.Context, query string, limit int, userID string) ([]SearchResult, error) {
 	if limit <= 0 {
 		limit = 10
 	}
@@ -57,6 +58,7 @@ func (s *SearchService) HybridSearch(ctx context.Context, query string, limit in
 			QueryText:      query,
 			QueryEmbedding: vec,
 			ResultLimit:    int32(limit * 2), // Fetch more for reranking
+			OwnerUserID:    userID,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("hybrid search failed: %w", err)
@@ -67,6 +69,7 @@ func (s *SearchService) HybridSearch(ctx context.Context, query string, limit in
 		bm25Results, err := s.queries.Bm25Search(ctx, store.Bm25SearchParams{
 			QueryText:   query,
 			ResultLimit: int32(limit * 2),
+			OwnerUserID: userID,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("bm25 search failed: %w", err)
@@ -153,8 +156,8 @@ func sortSearchResults(results []SearchResult) {
 }
 
 // SearchCompact returns lightweight search results for progressive disclosure.
-func (s *SearchService) SearchCompact(ctx context.Context, query string, limit int) ([]CompactResult, error) {
-	results, err := s.HybridSearch(ctx, query, limit)
+func (s *SearchService) SearchCompact(ctx context.Context, query string, limit int, userID string) ([]CompactResult, error) {
+	results, err := s.HybridSearch(ctx, query, limit, userID)
 	if err != nil {
 		return nil, err
 	}

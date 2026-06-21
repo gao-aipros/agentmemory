@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/agentmemory/agentmemory/internal/auth"
 	"github.com/agentmemory/agentmemory/internal/service"
 	"github.com/agentmemory/agentmemory/internal/store"
 	"github.com/google/uuid"
@@ -435,7 +436,8 @@ func registerMemoryRecall(mcpServer *mcp.Server, svc *ServiceBundle) {
 			a.Format = "compact"
 		}
 
-		result, err := svc.Recall.Recall(ctx, a.Query, a.Limit, a.Format)
+		userID := auth.GetUserIDFromContext(ctx)
+	result, err := svc.Recall.Recall(ctx, a.Query, a.Limit, a.Format, userID)
 		if err != nil {
 			return &mcp.CallToolResult{
 				IsError: true,
@@ -478,7 +480,8 @@ func registerMemorySmartSearch(mcpServer *mcp.Server, svc *ServiceBundle) {
 			a.Limit = 10
 		}
 
-		result, err := svc.SmartSearch.Search(ctx, a.Query, a.Limit, a.ExpandIDs)
+		userID := auth.GetUserIDFromContext(ctx)
+		result, err := svc.SmartSearch.Search(ctx, a.Query, a.Limit, a.ExpandIDs, userID)
 		if err != nil {
 			return &mcp.CallToolResult{
 				IsError: true,

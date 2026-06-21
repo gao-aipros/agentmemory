@@ -31,13 +31,14 @@ type SmartSearchResult struct {
 // Search performs a smart search with optional progressive disclosure expansion.
 // Returns compact results by default. If expandIDs are provided, those IDs are
 // expanded to full results in the same response.
-func (s *SmartSearchService) Search(ctx context.Context, query string, limit int, expandIDs []string) (*SmartSearchResult, error) {
+// userID enforces cross-tenant isolation.
+func (s *SmartSearchService) Search(ctx context.Context, query string, limit int, expandIDs []string, userID string) (*SmartSearchResult, error) {
 	if limit <= 0 {
 		limit = 10
 	}
 
 	// Perform hybrid search
-	results, err := s.searchSvc.HybridSearch(ctx, query, limit)
+	results, err := s.searchSvc.HybridSearch(ctx, query, limit, userID)
 	if err != nil {
 		return nil, fmt.Errorf("smart search failed: %w", err)
 	}

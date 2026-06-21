@@ -13,12 +13,13 @@ import (
 
 const bm25Search = `-- name: Bm25Search :many
 SELECT s.id::text AS id, s.bm25_score::float8 AS bm25_score
-FROM bm25_search($1, $2) s
+FROM bm25_search($1, $2, $3) s
 `
 
 type Bm25SearchParams struct {
 	QueryText   string
 	ResultLimit int32
+	OwnerUserID string
 }
 
 type Bm25SearchRow struct {
@@ -28,8 +29,9 @@ type Bm25SearchRow struct {
 
 // BM25 full-text search via the bm25_search wrapper function.
 // Explicit casts ensure sqlc generates proper Go types.
+// $3 (owner_user_id) enforces cross-tenant isolation.
 func (q *Queries) Bm25Search(ctx context.Context, arg Bm25SearchParams) ([]Bm25SearchRow, error) {
-	rows, err := q.db.Query(ctx, bm25Search, arg.QueryText, arg.ResultLimit)
+	rows, err := q.db.Query(ctx, bm25Search, arg.QueryText, arg.ResultLimit, arg.OwnerUserID)
 	if err != nil {
 		return nil, err
 	}
@@ -111,13 +113,14 @@ SELECT
     s.combined_score::float8 AS combined_score,
     s.bm25_score::float8 AS bm25_score,
     s.vector_score::float8 AS vector_score
-FROM hybrid_search($1, $2, $3) s
+FROM hybrid_search($1, $2, $3, $4) s
 `
 
 type HybridSearchParams struct {
 	QueryText      string
 	QueryEmbedding *pgvector.Vector
 	ResultLimit    int32
+	OwnerUserID    string
 }
 
 type HybridSearchRow struct {
@@ -130,8 +133,14 @@ type HybridSearchRow struct {
 // Full hybrid BM25 + vector search via the hybrid_search wrapper function.
 // Combines both streams with FULL OUTER JOIN.
 // Weights: BM25 * 0.4 + vector * 0.6.
+// $4 (owner_user_id) enforces cross-tenant isolation.
 func (q *Queries) HybridSearch(ctx context.Context, arg HybridSearchParams) ([]HybridSearchRow, error) {
-	rows, err := q.db.Query(ctx, hybridSearch, arg.QueryText, arg.QueryEmbedding, arg.ResultLimit)
+	rows, err := q.db.Query(ctx, hybridSearch,
+		arg.QueryText,
+		arg.QueryEmbedding,
+		arg.ResultLimit,
+		arg.OwnerUserID,
+	)
 	if err != nil {
 		return nil, err
 	}

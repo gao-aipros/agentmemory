@@ -34,7 +34,7 @@ func TestBenchSearch(t *testing.T) {
 	ctx := context.Background()
 
 	// Warm up: one search to prime caches
-	_, err := searchSvc.HybridSearch(ctx, "PostgreSQL connection pool", 10)
+	_, err := searchSvc.HybridSearch(ctx, "PostgreSQL connection pool", 10, "bench-user-001")
 	if err != nil {
 		t.Skipf("skipping benchmark: warm-up search failed (container may be resource-constrained): %v", err)
 	}
@@ -52,7 +52,7 @@ func TestBenchSearch(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		query := queries[i%len(queries)]
 		start := time.Now()
-		results, err := searchSvc.HybridSearch(ctx, query, 10)
+		results, err := searchSvc.HybridSearch(ctx, query, 10, "bench-user-001")
 		elapsed := time.Since(start)
 
 		if err != nil { t.Skipf("skipping benchmark at iteration %d: %v", i, err); return }
@@ -98,7 +98,7 @@ func BenchmarkHybridSearch(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		query := queries[i%len(queries)]
-		_, err := searchSvc.HybridSearch(ctx, query, 10)
+		_, err := searchSvc.HybridSearch(ctx, query, 10, "bench-user-001")
 		if err != nil {
 			b.Fatalf("search failed: %v", err)
 		}
@@ -121,7 +121,7 @@ func TestBenchSearchEmptyDB(t *testing.T) {
 	ctx := context.Background()
 
 	start := time.Now()
-	results, err := searchSvc.HybridSearch(ctx, "nonexistent query", 10)
+	results, err := searchSvc.HybridSearch(ctx, "nonexistent query", 10, "bench-user-001")
 	elapsed := time.Since(start)
 
 	require.NoError(t, err)

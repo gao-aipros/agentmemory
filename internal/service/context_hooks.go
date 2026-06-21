@@ -97,7 +97,7 @@ func (m *ContextHookManager) TriggerPreToolUse(ctx context.Context, userID strin
 	// Search for observations related to these file paths
 	// For now, use the first file path as a search query
 	query := filePaths[0]
-	results, err := m.ctxSvc.searchSvc.HybridSearch(ctx, query, 3)
+	results, err := m.ctxSvc.searchSvc.HybridSearch(ctx, query, 3, userID)
 	if err != nil {
 		slog.Warn("pre_tool_use context search failed", "error", err)
 		return &ContextHookResult{

@@ -13,14 +13,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// contextKey is a private type for context keys to avoid collisions.
-type contextKey string
-
-const (
-	userIDKey    contextKey = "user_id"
-	userEmailKey contextKey = "user_email"
-	userNameKey  contextKey = "user_name"
-)
+// handler context keys are re-exported from internal/auth to keep auth knowledge
+// in one canonical package shared by handler and mcp layers.
+// The middleware uses auth.UserIDKey etc. directly from the auth package.
 
 // AuthMiddleware returns an HTTP middleware that authenticates requests.
 // It supports both JWT session tokens (st_ prefix) and API keys (ak_ prefix).
@@ -66,9 +61,9 @@ func AuthMiddleware(pool *pgxpool.Pool) func(next http.Handler) http.Handler {
 			}
 
 			// Inject user identity into context
-			ctx := context.WithValue(r.Context(), userIDKey, user.ID)
-			ctx = context.WithValue(ctx, userEmailKey, user.Email)
-			ctx = context.WithValue(ctx, userNameKey, user.Name)
+			ctx := context.WithValue(r.Context(), auth.UserIDKey, user.ID)
+			ctx = context.WithValue(ctx, auth.UserEmailKey, user.Email)
+			ctx = context.WithValue(ctx, auth.UserNameKey, user.Name)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -148,18 +143,17 @@ func validateAPIKey(ctx context.Context, token string, queries *store.Queries) (
 
 // GetUserIDFromContext extracts the authenticated user ID from the request context.
 func GetUserIDFromContext(ctx context.Context) string {
-	id, _ := ctx.Value(userIDKey).(string)
-	return id
+	return auth.GetUserIDFromContext(ctx)
 }
 
 // GetUserEmailFromContext extracts the authenticated user email from the request context.
 func GetUserEmailFromContext(ctx context.Context) string {
-	email, _ := ctx.Value(userEmailKey).(string)
+	email, _ := ctx.Value(auth.UserEmailKey).(string)
 	return email
 }
 
 // GetUserNameFromContext extracts the authenticated user name from the request context.
 func GetUserNameFromContext(ctx context.Context) string {
-	name, _ := ctx.Value(userNameKey).(string)
+	name, _ := ctx.Value(auth.UserNameKey).(string)
 	return name
 }
