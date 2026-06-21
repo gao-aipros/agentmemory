@@ -20,7 +20,7 @@
 
 ## Deployment
 
-- Go app Docker image + `paradedb/paradedb` official image
+- Go app Docker image + `paradedb/paradedb:latest` (PG18) official image
 - `docker-compose.yml`
 - `DATABASE_URL` connection string
 

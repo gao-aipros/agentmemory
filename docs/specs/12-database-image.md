@@ -2,7 +2,7 @@
 
 ## Image
 
-- Official Docker image: `paradedb/paradedb`
+- Official Docker image: `paradedb/paradedb:latest` (PG18)
 - Pre-installed extensions: pg_search (BM25), pgvector (HNSW), postgis, pg_ivm, pg_cron
 - **Only pg_search and pgvector are enabled** — others not created to keep minimal footprint
 - Quick start:

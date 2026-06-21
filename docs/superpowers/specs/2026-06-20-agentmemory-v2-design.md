@@ -71,7 +71,7 @@ API keys cannot access UI routes.
 
 ## 4. Database
 
-**Engine:** ParadeDB (`paradedb/paradedb`), pg_search + pgvector enabled only.
+**Engine:** ParadeDB (`paradedb/paradedb:latest`, PG18), pg_search + pgvector enabled only.
 Apache AGE deferred; graph traversal via PG native `WITH RECURSIVE` CTE.
 
 **Core table:** Single `observations` table with triple index:
@@ -232,7 +232,7 @@ Integration-test-heavy approach:
 
 ## 14. Deployment
 
-- Go app Docker image + `paradedb/paradedb` official image
+- Go app Docker image + `paradedb/paradedb:latest` (PG18) official image
 - `docker-compose.yml`
 - `DATABASE_URL` connection string
 

@@ -4,7 +4,7 @@
 
 PostgreSQL + pgvector + pg_search (ParadeDB) unified in one stack.
 
-- **Docker:** `paradedb/paradedb` official image, pg_search + vector extensions only
+- **Docker:** `paradedb/paradedb:latest` (PG18) official image, pg_search + vector extensions only
 - **Core table:** single observation table with BM25 (ParadeDB) + HNSW (pgvector) + B-tree indexes
 - **Hybrid query:** one SQL FULL OUTER JOIN
 
