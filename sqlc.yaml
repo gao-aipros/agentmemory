@@ -8,5 +8,4 @@ sql:
         package: "store"
         out: "internal/store/"
         sql_package: "pgx/v5"
-        emit_exported_methods: true
         emit_pointers_for_null_types: true

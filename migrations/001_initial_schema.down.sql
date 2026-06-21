@@ -1,0 +1,7 @@
+-- AgentMemory v2 — Initial Schema (rollback)
+
+DROP TABLE IF EXISTS sessions CASCADE;
+DROP TABLE IF EXISTS team_members CASCADE;
+DROP TABLE IF EXISTS teams CASCADE;
+DROP TABLE IF EXISTS api_keys CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
