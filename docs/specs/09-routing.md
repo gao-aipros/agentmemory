@@ -73,7 +73,7 @@ services:
         condition: service_healthy
 
   db:
-    image: paradedb/paradedb:latest
+    image: paradedb/paradedb:0.24.1-pg18
     environment:
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=pass

@@ -71,7 +71,7 @@ API keys cannot access UI routes.
 
 ## 4. Database
 
-**Engine:** ParadeDB (`paradedb/paradedb:latest`, PG18), pg_search + pgvector enabled only.
+**Engine:** ParadeDB (`paradedb/paradedb:0.24.1-pg18`), pg_search + pgvector enabled only.
 Apache AGE deferred; graph traversal via PG native `WITH RECURSIVE` CTE.
 
 **Core table:** Single `observations` table with triple index:

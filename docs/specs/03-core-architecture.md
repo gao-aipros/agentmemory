@@ -6,7 +6,7 @@ Finalized 2026-06-21.
 
 PostgreSQL + pgvector + pg_search (ParadeDB) unified in one stack.
 
-- **Docker image:** `paradedb/paradedb:latest` (PG18) official image
+- **Docker image:** `paradedb/paradedb:0.24.1-pg18` official image
 - **Extensions enabled:** pg_search (BM25 full-text search) + pgvector (HNSW vector index)
 - **Extensions NOT enabled:** postgis, pg_ivm, pg_cron (pre-installed in image but kept off for minimal footprint)
 - **Graph traversal:** PostgreSQL native `WITH RECURSIVE` CTE (Apache AGE NOT used, not in ParadeDB image)

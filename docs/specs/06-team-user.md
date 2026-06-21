@@ -74,7 +74,8 @@ No data copy for sharing (unlike v0's team-share which duplicated data).
 - Simpler but less personalization
 
 **Member Choice:**
-- Client sets `AGENTMEMORY_SHARE_CONSOLIDATED` flag per observation
+- Env var `AGENTMEMORY_SHARE_CONSOLIDATED=true` — read on each `observe()` call
+- When set, observations are shared with team for consolidation
 - Maximum flexibility, more client responsibility
 - Default mode for new teams
 

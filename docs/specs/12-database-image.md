@@ -2,13 +2,13 @@
 
 ## Image
 
-- Official Docker image: `paradedb/paradedb:latest` (PG18)
+- Official Docker image: `paradedb/paradedb:0.24.1-pg18`
 - Pre-installed extensions: pg_search (BM25), pgvector (HNSW), postgis, pg_ivm, pg_cron
 - **Only pg_search and pgvector are enabled** — others not created to keep minimal footprint
 - Quick start:
   ```
   docker run -e POSTGRES_USER=myuser -e POSTGRES_PASSWORD=mypassword \
-    -e POSTGRES_DB=mydb -p 5432:5432 paradedb/paradedb:latest
+    -e POSTGRES_DB=mydb -p 5432:5432 paradedb/paradedb:0.24.1-pg18
   ```
 
 ## Graph Traversal

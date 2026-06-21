@@ -11,7 +11,7 @@ Single observation table with BM25+HNSW+B-tree, hybrid smart search in one SQL F
 ## Key Decisions
 
 - Tech stack: Go 1.26.4, chi, pgxpool+sqlc, slog, golang-migrate, testify+testcontainers
-- Database: ParadeDB `paradedb/paradedb:latest` (PG18), pg_search + pgvector extensions only
+- Database: ParadeDB `paradedb/paradedb:0.24.1-pg18`, pg_search + pgvector extensions only
 - Smart search: three-way SQL FULL OUTER JOIN (BM25 0.4, Vector 0.6, Graph 0.3)
 - Team/User: first-class PG entities, row-level ownership, three visibility modes
 - Visibility: observations/compressed/summaries/crystals = private, lessons = team, memory = configurable
