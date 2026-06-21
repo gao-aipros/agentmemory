@@ -16,7 +16,7 @@ Finalized 2026-06-20.
 | **PreCompact** | conditional context injection | `AGENTMEMORY_INJECT_CONTEXT` must be enabled. Runs before context window compaction to ensure memory is fresh |
 | **SubagentStart** | observe (agent_id, agent_type), **NO context injection** | Subagent tasks are narrow and focused — adding 1500 tokens of general context would waste tokens and distract the subagent |
 | **SubagentStop** | observe (agent_id, agent_type, last_message) | Record subagent completion and its final output |
-| **Notification** | observe (filter: permission_prompt → notification_type, title, message) | Only record notification-type events, filter out other permission prompts |
+| **Notification** | observe (filter: only permission allow prompts — `notification_type`, `title`, `message`) | Record user permission decisions. Skip other notification types. |
 | **TaskCompleted** | observe (task_id, task_subject, task_description) | Record when a tracked task completes |
 | **PostCommit** | session/commit (git sha → session link, NO observe) | Link git commit to session for commit-context queries. Does NOT create an observation |
 
