@@ -134,12 +134,8 @@ func NewRouter(pool *pgxpool.Pool) chi.Router {
 			}
 		})
 
-		// MCP route
-		r.Get("/v1/mcp", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"message":"MCP endpoint placeholder"}`))
-		})
+		// MCP route — StreamableHTTP handler supports both GET (SSE) and POST (JSON-RPC)
+		r.Mount("/v1/mcp", NewMCPHandler(pool))
 	})
 
 	return r
