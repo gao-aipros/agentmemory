@@ -20,11 +20,3 @@ type FullResult struct {
 	Timestamp string
 }
 
-// ProgressiveDisclosure encapsulate the two-step progressive disclosure pattern:
-// 1. SearchCompact returns minimal results (id, title, score)
-// 2. SearchExpand returns full details for selected IDs
-type ProgressiveDisclosure struct {
-	Results     []CompactResult
-	Expandable  bool
-	TotalHits   int
-}
