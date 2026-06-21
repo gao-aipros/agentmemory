@@ -361,4 +361,52 @@ CREATE INDEX IF NOT EXISTS idx_graph_nodes_type ON graph_nodes(node_type);
 CREATE INDEX IF NOT EXISTS idx_graph_nodes_entity ON graph_nodes(entity_id);
 CREATE INDEX IF NOT EXISTS idx_graph_edges_from ON graph_edges(from_node_id);
 CREATE INDEX IF NOT EXISTS idx_graph_edges_to ON graph_edges(to_node_id);
+
+CREATE INDEX IF NOT EXISTS idx_observations_bm25 ON observations
+USING bm25 (id, title, narrative, facts)
+WITH (key_field='id');
+
+CREATE OR REPLACE FUNCTION bm25_search(query_text text, result_limit int)
+RETURNS TABLE(id text, bm25_score float8) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT observations.id, paradedb.score(observations.id)::float8
+    FROM observations
+    WHERE observations @@@ paradedb.parse(query_text)
+    ORDER BY paradedb.score(observations.id) DESC
+    LIMIT result_limit;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+CREATE OR REPLACE FUNCTION hybrid_search(
+    query_text text,
+    query_embedding vector,
+    result_limit int
+)
+RETURNS TABLE(id text, combined_score float8, bm25_score float8, vector_score float8) AS $$
+BEGIN
+    RETURN QUERY
+    WITH
+    bm25_hits AS (
+        SELECT b.id, b.bm25_score
+        FROM bm25_search(query_text, result_limit) b
+    ),
+    vector_hits AS (
+        SELECT oe.observation_id AS id, (1.0 - (oe.embedding <=> query_embedding))::float8 AS vector_score
+        FROM observation_embeddings oe
+        WHERE oe.embedding IS NOT NULL
+        ORDER BY oe.embedding <=> query_embedding
+        LIMIT result_limit
+    )
+    SELECT
+        COALESCE(b.id, v.id) AS id,
+        (COALESCE(b.bm25_score, 0) * 0.4 + COALESCE(v.vector_score, 0) * 0.6)::float8 AS combined_score,
+        COALESCE(b.bm25_score, 0)::float8 AS bm25_score,
+        COALESCE(v.vector_score, 0)::float8 AS vector_score
+    FROM bm25_hits b
+    FULL OUTER JOIN vector_hits v ON b.id = v.id
+    ORDER BY combined_score DESC
+    LIMIT result_limit;
+END;
+$$ LANGUAGE plpgsql STABLE;
 `

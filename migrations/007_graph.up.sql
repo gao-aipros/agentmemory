@@ -39,7 +39,7 @@ BEGIN
     RETURN QUERY
     SELECT observations.id, paradedb.score(observations.id)::float8
     FROM observations
-    WHERE observations @@@ query_text
+    WHERE observations @@@ paradedb.parse(query_text)
     ORDER BY paradedb.score(observations.id) DESC
     LIMIT result_limit;
 END;

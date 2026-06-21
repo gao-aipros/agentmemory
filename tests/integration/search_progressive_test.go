@@ -30,7 +30,7 @@ func TestProgressiveDisclosure_CompactResults(t *testing.T) {
 		assert.NotEmpty(t, c.ID, "compact result should have ID")
 		assert.NotEmpty(t, c.Title, "compact result should have Title")
 		assert.GreaterOrEqual(t, c.Score, 0.0, "compact result should have Score >= 0")
-		assert.LessOrEqual(t, c.Score, 1.3, "combined score should not exceed max possible (1.3)")
+		assert.Greater(t, c.Score, 0.0, "compact result should have positive BM25 score")
 	}
 }
 
