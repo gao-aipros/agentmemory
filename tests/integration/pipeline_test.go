@@ -54,7 +54,7 @@ func TestPipelineObserveToCompressed(t *testing.T) {
 		Narrative:   "The user wanted to understand the PostgreSQL schema structure for the memory platform.",
 		Facts:       "Database uses PostgreSQL with pgvector extension",
 		Concepts:    []string{"postgresql", "schema", "pgvector"},
-		Importance:  0.8,
+		Importance:  ptrFloat64(0.8),
 	}
 
 	obs, err := obsSvc.RecordObservation(ctx, input)
@@ -117,7 +117,7 @@ func TestPipelineObserveTypeValidation(t *testing.T) {
 		Type:        "invalid_type",
 		Title:       "Test",
 		Narrative:   "Test",
-		Importance:  0.5,
+		Importance:  ptrFloat64(0.5),
 	})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid hook type")
@@ -152,7 +152,7 @@ func TestPipelineImportanceValidation(t *testing.T) {
 		Type:        service.HookNotification,
 		Title:       "Test",
 		Narrative:   "Test",
-		Importance:  1.5,
+		Importance:  ptrFloat64(1.5),
 	})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "importance must be between")

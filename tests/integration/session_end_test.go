@@ -54,7 +54,7 @@ func TestSessionEndTriggersPipeline(t *testing.T) {
 			Type:        obsType,
 			Title:       "Test observation " + formatTestInt(i),
 			Narrative:   "Test narrative for observation " + formatTestInt(i),
-			Importance:  0.5,
+			Importance:  ptrFloat64(0.5),
 		})
 		require.NoError(t, err)
 	}

@@ -29,7 +29,7 @@ type RecordObservationInput struct {
 	Facts        string
 	Concepts     []string
 	Files        []string
-	Importance   float64
+	Importance   *float64
 }
 
 // NewObservationService creates a new ObservationService.
@@ -48,9 +48,13 @@ func (s *ObservationService) RecordObservation(ctx context.Context, input Record
 		return nil, fmt.Errorf("invalid hook type: %q", input.Type)
 	}
 
-	// Validate importance
-	if !ValidateImportance(input.Importance) {
-		return nil, fmt.Errorf("importance must be between 0.0 and 1.0, got %f", input.Importance)
+	// Validate importance (nil means use default 0.5)
+	imp := 0.5
+	if input.Importance != nil {
+		imp = *input.Importance
+	}
+	if !ValidateImportance(imp) {
+		return nil, fmt.Errorf("importance must be between 0.0 and 1.0, got %f", imp)
 	}
 
 	// Validate required fields
@@ -88,7 +92,7 @@ func (s *ObservationService) RecordObservation(ctx context.Context, input Record
 		Facts:       nilString(input.Facts),
 		Concepts:    input.Concepts,
 		Files:       input.Files,
-		Importance:  input.Importance,
+		Importance:  imp,
 		Timestamp:   pgtype.Timestamptz{Time: time.Now(), Valid: true},
 	}
 
