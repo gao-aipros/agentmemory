@@ -260,7 +260,7 @@ func registerMemoryObserve(mcpServer *mcp.Server, svc *ServiceBundle) {
 		Facts       string   `json:"facts,omitempty"`
 		Concepts    []string `json:"concepts,omitempty"`
 		Files       []string `json:"files,omitempty"`
-		Importance  float64  `json:"importance,omitempty"`
+		Importance  *float64 `json:"importance,omitempty"`
 		OwnerType   string   `json:"owner_type,omitempty"`
 		OwnerUserID string   `json:"owner_user_id,omitempty"`
 		OwnerTeamID string   `json:"owner_team_id,omitempty"`
@@ -292,8 +292,9 @@ func registerMemoryObserve(mcpServer *mcp.Server, svc *ServiceBundle) {
 			return nil, err
 		}
 
-		if a.Importance == 0 {
-			a.Importance = 0.5
+		importance := 0.5
+		if a.Importance != nil {
+			importance = *a.Importance
 		}
 
 		input := service.RecordObservationInput{
@@ -307,7 +308,7 @@ func registerMemoryObserve(mcpServer *mcp.Server, svc *ServiceBundle) {
 			Facts:       a.Facts,
 			Concepts:    a.Concepts,
 			Files:       a.Files,
-			Importance:  a.Importance,
+			Importance:  &importance,
 		}
 
 		obs, err := svc.Observation.RecordObservation(ctx, input)
@@ -672,7 +673,7 @@ func registerMemoryLessonSave(mcpServer *mcp.Server, svc *ServiceBundle) {
 			Title:      "Lesson: " + truncateStr(a.Content, 80),
 			Narrative:  a.Content,
 			Concepts:   a.Tags,
-			Importance: 0.7,
+			Importance:  func() *float64 { v := 0.7; return &v }(), // literal, not pointer deref
 		}
 
 		obs, err := svc.Observation.RecordObservation(ctx, input)

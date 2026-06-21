@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 )
 
@@ -83,28 +82,10 @@ func stripXSSPatterns(s string) string {
 // The env var is read but not enforced yet. When implemented, this middleware
 // should return HTTP 429 Too Many Requests when the rate limit is exceeded.
 func RateLimitMiddleware(next http.Handler) http.Handler {
-	// Read the configured rate limit (for future use)
-	rateLimit := 100 // default
-	if val := os.Getenv("AGENTMEMORY_RATE_LIMIT"); val != "" {
-		if parsed, err := strconv.Atoi(val); err == nil && parsed > 0 {
-			rateLimit = parsed
-		} else {
-			log.Printf("[WARN] RateLimitMiddleware: invalid AGENTMEMORY_RATE_LIMIT value %q, using default %d", val, rateLimit)
-		}
+	if os.Getenv("AGENTMEMORY_RATE_LIMIT") != "" {
+		log.Printf("[WARN] AGENTMEMORY_RATE_LIMIT is set but rate limiting is not yet implemented — all requests pass through")
 	}
-
-	_ = rateLimit // placeholder — not yet enforced
-
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// TODO: Implement rate limiting using a token bucket or sliding window
-		// When rate limit is exceeded, respond with:
-		//   w.Header().Set("Retry-After", "1")
-		//   http.Error(w, `{"error":"rate_limit_exceeded"}`, http.StatusTooManyRequests)
-		//   return
-
-		// For now, pass through all requests
-		next.ServeHTTP(w, r)
-	})
+	return next
 }
 
 // SecurityHeadersMiddleware sets security-related HTTP headers on every response

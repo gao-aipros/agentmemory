@@ -191,7 +191,7 @@ func TestE2E_FullAgentSession(t *testing.T) {
 			Facts:       data.facts,
 			Concepts:    data.concepts,
 			Files:       data.files,
-			Importance:  data.importance,
+			Importance:  ptrFloat64(data.importance),
 		})
 		require.NoError(t, err, "should record observation for hook: %s", hookType)
 		require.NotNil(t, obs)

@@ -40,7 +40,7 @@ type observeRequest struct {
 	Facts       string   `json:"facts,omitempty"`
 	Concepts    []string `json:"concepts,omitempty"`
 	Files       []string `json:"files,omitempty"`
-	Importance  float64  `json:"importance,omitempty"`
+	Importance  *float64 `json:"importance,omitempty"`
 }
 
 // observeResponse is the JSON response for a successful observation recording.
@@ -93,10 +93,10 @@ func (h *RESTHandler) HandleObserve(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Default importance if not set
-	importance := req.Importance
-	if importance == 0 {
-		importance = 0.5
-	}
+		importance := 0.5
+		if req.Importance != nil {
+			importance = *req.Importance
+		}
 
 	// Default ownership to the authenticated user if not provided in the request
 	ownerType := req.OwnerType
@@ -121,7 +121,7 @@ func (h *RESTHandler) HandleObserve(w http.ResponseWriter, r *http.Request) {
 		Facts:       req.Facts,
 		Concepts:    req.Concepts,
 		Files:       req.Files,
-		Importance:  importance,
+		Importance:  &importance,
 	}
 
 	obs, err := h.obsSvc.RecordObservation(r.Context(), input)

@@ -47,7 +47,7 @@ func TestAllThirteenHookTypes(t *testing.T) {
 			Type:        hookType,
 			Title:       "Hook: " + hookType,
 			Narrative:   "Test narrative for hook type: " + hookType,
-			Importance:  0.5,
+			Importance:  ptrFloat64(0.5),
 		})
 		require.NoError(t, err, "should be able to record hook type: %s", hookType)
 		require.NotNil(t, obs)
@@ -104,7 +104,7 @@ func TestHookTypeSpecificFields(t *testing.T) {
 		Narrative:   "Agent is about to read a file",
 		Facts:       `{"tool": "Read", "path": "/path/to/file.go"}`,
 		Concepts:    []string{"tool_use", "read", "filesystem"},
-		Importance:  0.6,
+		Importance:  ptrFloat64(0.6),
 	})
 	require.NoError(t, err)
 
@@ -118,7 +118,7 @@ func TestHookTypeSpecificFields(t *testing.T) {
 		Facts:       `{"sha": "abc123", "branch": "main", "message": "Add migration"}`,
 		Concepts:    []string{"git", "commit", "version_control"},
 		Files:       []string{"/path/to/migration.sql"},
-		Importance:  0.7,
+		Importance:  ptrFloat64(0.7),
 	})
 	require.NoError(t, err)
 
