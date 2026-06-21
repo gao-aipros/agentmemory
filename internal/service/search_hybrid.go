@@ -39,7 +39,7 @@ func (s *SearchService) HybridSearch(ctx context.Context, query string, limit in
 
 	// Generate embedding for the query
 	var vec *pgvector.Vector
-	if s.embedSvc != nil && s.embedSvc.provider != nil {
+	if s.embedSvc != nil && s.embedSvc.Embedder() != nil {
 		embedding, err := s.embedSvc.GenerateEmbedding(ctx, query)
 		if err != nil {
 			// Log but continue — vector search will be skipped

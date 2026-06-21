@@ -25,8 +25,16 @@ func NewRouter(pool *pgxpool.Pool) chi.Router {
 	wsHub := NewWSHub()
 
 	if pool != nil {
-		llmSvc := service.NewLLMService(nil) // No LLM provider configured by default
-		embedSvc := service.NewEmbeddingService(pool, nil)
+		llmSvc, llmErr := service.NewLLMService()
+		if llmErr != nil {
+			slog.Warn("LLM service not configured — compression, summarization, consolidation disabled", "error", llmErr)
+			llmSvc = service.NewLLMServiceWithModel(nil)
+		}
+		embedSvc, embedErr := service.NewEmbeddingService(pool)
+		if embedErr != nil {
+			slog.Warn("Embedding service not configured — semantic search disabled", "error", embedErr)
+			embedSvc = &service.EmbeddingService{}
+		}
 		compressor := service.NewCompressionService(pool, llmSvc, embedSvc)
 		obsSvc := service.NewObservationService(pool, compressor)
 		sessionSvc := service.NewSessionService(pool)

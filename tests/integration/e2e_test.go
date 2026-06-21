@@ -237,7 +237,7 @@ func TestE2E_FullAgentSession(t *testing.T) {
 	// Step 5: Run context injection to verify it assembles context
 	// =========================================================================
 	slotSvc := service.NewSlotService(db.Pool)
-	embedSvc := service.NewEmbeddingService(db.Pool, nil)
+	embedSvc := service.NewEmbeddingServiceWithEmbedder(db.Pool, nil)
 	ctxSvc := service.NewContextService(db.Pool, embedSvc, slotSvc)
 
 	// Assemble context for the test user

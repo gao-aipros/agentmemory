@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/agentmemory/agentmemory/internal/service"
 	"github.com/agentmemory/agentmemory/internal/store"
@@ -40,8 +41,16 @@ type ServiceBundle struct {
 
 // NewServiceBundle creates all service instances from a connection pool.
 func NewServiceBundle(pool *pgxpool.Pool) *ServiceBundle {
-	llmSvc := service.NewLLMService(nil)
-	embedSvc := service.NewEmbeddingService(pool, nil)
+	llmSvc, llmErr := service.NewLLMService()
+	if llmErr != nil {
+		slog.Warn("LLM service not configured — MCP LLM tools disabled", "error", llmErr)
+		llmSvc = service.NewLLMServiceWithModel(nil)
+	}
+	embedSvc, embedErr := service.NewEmbeddingService(pool)
+	if embedErr != nil {
+		slog.Warn("Embedding service not configured — MCP semantic search disabled", "error", embedErr)
+		embedSvc = &service.EmbeddingService{}
+	}
 	compressor := service.NewCompressionService(pool, llmSvc, embedSvc)
 	obsSvc := service.NewObservationService(pool, compressor)
 	sessionSvc := service.NewSessionService(pool)
