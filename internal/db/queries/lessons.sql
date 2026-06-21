@@ -18,3 +18,6 @@ DELETE FROM lessons WHERE id = $1;
 -- name: InsertLessonReinforcement :exec
 INSERT INTO lesson_reinforcements (id, lesson_id, observation_id, confidence_delta)
 VALUES ($1, $2, $3, $4);
+
+-- name: ListAllLessons :many
+SELECT * FROM lessons ORDER BY created_at DESC LIMIT $1;

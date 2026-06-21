@@ -9,3 +9,6 @@ RETURNING *;
 
 -- name: GetSessionSummary :one
 SELECT * FROM session_summaries WHERE session_id = $1;
+
+-- name: ListSummariesBySession :many
+SELECT * FROM session_summaries WHERE session_id = $1 ORDER BY created_at DESC;

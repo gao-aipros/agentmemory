@@ -102,6 +102,40 @@ func (q *Queries) InsertLessonReinforcement(ctx context.Context, arg InsertLesso
 	return err
 }
 
+const listAllLessons = `-- name: ListAllLessons :many
+SELECT id, team_id, visibility, content, context, confidence, source, created_at, last_reinforced_at FROM lessons ORDER BY created_at DESC LIMIT $1
+`
+
+func (q *Queries) ListAllLessons(ctx context.Context, limit int32) ([]Lesson, error) {
+	rows, err := q.db.Query(ctx, listAllLessons, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Lesson
+	for rows.Next() {
+		var i Lesson
+		if err := rows.Scan(
+			&i.ID,
+			&i.TeamID,
+			&i.Visibility,
+			&i.Content,
+			&i.Context,
+			&i.Confidence,
+			&i.Source,
+			&i.CreatedAt,
+			&i.LastReinforcedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLessonsByTeam = `-- name: ListLessonsByTeam :many
 SELECT id, team_id, visibility, content, context, confidence, source, created_at, last_reinforced_at FROM lessons WHERE team_id = $1 ORDER BY created_at DESC
 `

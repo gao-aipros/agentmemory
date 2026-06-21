@@ -11,3 +11,6 @@ SELECT * FROM observations WHERE session_id = $1 ORDER BY timestamp;
 
 -- name: DeleteObservation :exec
 DELETE FROM observations WHERE id = $1;
+
+-- name: ListRecentObservations :many
+SELECT * FROM observations ORDER BY created_at DESC LIMIT $1;

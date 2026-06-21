@@ -27,6 +27,37 @@ func (q *Queries) GetSessionSummary(ctx context.Context, sessionID string) (Sess
 	return i, err
 }
 
+const listSummariesBySession = `-- name: ListSummariesBySession :many
+SELECT id, session_id, visibility, summary_text, concepts, created_at FROM session_summaries WHERE session_id = $1 ORDER BY created_at DESC
+`
+
+func (q *Queries) ListSummariesBySession(ctx context.Context, sessionID string) ([]SessionSummary, error) {
+	rows, err := q.db.Query(ctx, listSummariesBySession, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SessionSummary
+	for rows.Next() {
+		var i SessionSummary
+		if err := rows.Scan(
+			&i.ID,
+			&i.SessionID,
+			&i.Visibility,
+			&i.SummaryText,
+			&i.Concepts,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertSessionSummary = `-- name: UpsertSessionSummary :one
 INSERT INTO session_summaries (id, session_id, visibility, summary_text, concepts)
 VALUES ($1, $2, $3, $4, $5)

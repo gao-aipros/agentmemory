@@ -36,6 +36,24 @@ type CompressedObservation struct {
 	CreatedAt      pgtype.Timestamptz
 }
 
+type GraphEdge struct {
+	ID         string
+	FromNodeID string
+	ToNodeID   string
+	EdgeType   string
+	Weight     float64
+	CreatedAt  pgtype.Timestamptz
+}
+
+type GraphNode struct {
+	ID        string
+	NodeType  string
+	EntityID  string
+	Label     string
+	Metadata  []byte
+	CreatedAt pgtype.Timestamptz
+}
+
 type Lesson struct {
 	ID               string
 	TeamID           *string

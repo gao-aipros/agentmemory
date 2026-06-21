@@ -147,3 +147,43 @@ func (q *Queries) ListObservationsBySession(ctx context.Context, sessionID strin
 	}
 	return items, nil
 }
+
+const listRecentObservations = `-- name: ListRecentObservations :many
+SELECT id, session_id, owner_type, owner_user_id, owner_team_id, visibility, type, title, narrative, facts, concepts, files, importance, timestamp, created_at FROM observations ORDER BY created_at DESC LIMIT $1
+`
+
+func (q *Queries) ListRecentObservations(ctx context.Context, limit int32) ([]Observation, error) {
+	rows, err := q.db.Query(ctx, listRecentObservations, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Observation
+	for rows.Next() {
+		var i Observation
+		if err := rows.Scan(
+			&i.ID,
+			&i.SessionID,
+			&i.OwnerType,
+			&i.OwnerUserID,
+			&i.OwnerTeamID,
+			&i.Visibility,
+			&i.Type,
+			&i.Title,
+			&i.Narrative,
+			&i.Facts,
+			&i.Concepts,
+			&i.Files,
+			&i.Importance,
+			&i.Timestamp,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
