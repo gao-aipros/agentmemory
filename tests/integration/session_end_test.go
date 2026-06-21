@@ -16,7 +16,7 @@ import (
 // the summarize → consolidate pipeline and creates session_summaries,
 // memories, and lessons.
 func TestSessionEndTriggersPipeline(t *testing.T) {
-	t.Parallel()
+// Parallel removed — shared container requires sequential execution
 
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)
@@ -110,7 +110,7 @@ func TestSessionEndTriggersPipeline(t *testing.T) {
 // TestSessionEndRequiresObservations tests that ending a session with no
 // observations completes gracefully.
 func TestSessionEndNoObservations(t *testing.T) {
-	t.Parallel()
+// Parallel removed — shared container requires sequential execution
 
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)

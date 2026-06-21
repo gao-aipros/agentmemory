@@ -283,21 +283,7 @@ func TeardownTestDBbenchHelper(b *testing.B, db *TestDB) {
 // runMigrationsBench runs migrations for benchmarks.
 func runMigrationsBench(b *testing.B, db *TestDB) {
 	b.Helper()
-	// Reuse the same migration approach as the test helpers.
-	// For benchmarks, we use the embedded approach from search_hybrid_test.go.
-	ctx := context.Background()
-	migrations := []string{
-		migration001,
-		migration002,
-		migration003,
-		migration004,
-		migration005,
-		migration006,
-		migration007,
-	}
-	for _, m := range migrations {
-		if _, err := db.Pool.Exec(ctx, m); err != nil {
-			b.Fatalf("migration failed: %v", err)
-		}
+	if err := RunAllMigrations(db.Pool); err != nil {
+		b.Fatalf("migration failed: %v", err)
 	}
 }

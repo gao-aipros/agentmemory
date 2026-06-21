@@ -14,7 +14,7 @@ import (
 // TestAllThirteenHookTypes tests that all 13 hook event types can be
 // recorded as observations and stored correctly in the database.
 func TestAllThirteenHookTypes(t *testing.T) {
-	t.Parallel()
+// Parallel removed — shared container requires sequential execution
 
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)
@@ -75,7 +75,7 @@ func TestAllThirteenHookTypes(t *testing.T) {
 // TestHookTypeSpecificFields tests that each hook type can carry its own
 // specific metadata in facts and concepts.
 func TestHookTypeSpecificFields(t *testing.T) {
-	t.Parallel()
+// Parallel removed — shared container requires sequential execution
 
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)

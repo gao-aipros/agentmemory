@@ -47,7 +47,7 @@ func createSession(t *testing.T, ctx context.Context, queries *store.Queries, us
 // correct ownership metadata and that owner fields accurately reflect who
 // created each observation.
 func TestOwnership_PrivateObservation(t *testing.T) {
-	t.Parallel()
+// Parallel removed — shared container requires sequential execution
 
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)
@@ -146,7 +146,7 @@ func TestOwnership_PrivateObservation(t *testing.T) {
 // TestOwnership_TeamMemorySharing tests the end-to-end memory sharing flow:
 // Alice creates a private memory, then shares it to her team so Bob can see it.
 func TestOwnership_TeamMemorySharing(t *testing.T) {
-	t.Parallel()
+// Parallel removed — shared container requires sequential execution
 
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)
@@ -252,7 +252,7 @@ func TestOwnership_TeamMemorySharing(t *testing.T) {
 // TestOwnership_VisibilityFiltering tests that memories can be created with
 // different visibility levels and are correctly filtered by ownership queries.
 func TestOwnership_VisibilityFiltering(t *testing.T) {
-	t.Parallel()
+// Parallel removed — shared container requires sequential execution
 
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)
