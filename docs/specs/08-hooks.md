@@ -11,7 +11,7 @@ Finalized 2026-06-20.
 | **Stop** | **DELETED** | v0 bug: Stop incorrectly ran summarize + session/end on every turn. This was per-turn lifecycle ops that should only happen at session end. Deleted in v2 — no replacement |
 | **UserPromptSubmit** | observe (user prompt) | Record what the user asked |
 | **PreToolUse** | conditional enrich context injection | `AGENTMEMORY_INJECT_CONTEXT` must be enabled. Runs file-specific search for context relevant to the tool about to be used |
-| **PostToolUse** | observe (tool_name, tool_input, tool_output, image_data) | Record tool execution results. Image data (base64 inline) is extracted and saved to filesystem at `~/.agentmemory/images/<sha256>.ext` — only the file path is stored in `observations.image_path` |
+| **PostToolUse** | observe (tool_name, tool_input, tool_output) | Record tool execution results |
 | **PostToolUseFailure** | observe (tool_name, tool_input, error), skip interrupt | Record failure but do NOT interrupt agent flow. Errors are informational |
 | **PreCompact** | conditional context injection | `AGENTMEMORY_INJECT_CONTEXT` must be enabled. Runs before context window compaction to ensure memory is fresh |
 | **SubagentStart** | observe (agent_id, agent_type), **NO context injection** | Subagent tasks are narrow and focused — adding 1500 tokens of general context would waste tokens and distract the subagent |
