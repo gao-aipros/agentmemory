@@ -9,6 +9,8 @@ import (
 	"fmt"
 
 	"github.com/agentmemory/agentmemory/internal/service"
+	"github.com/agentmemory/agentmemory/internal/store"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -354,19 +356,25 @@ func registerMemorySave(mcpServer *mcp.Server, svc *ServiceBundle) {
 			return nil, err
 		}
 
-		// Record as an observation of type "explicit_memory"
-		input := service.RecordObservationInput{
-			SessionID:  "explicit", // explicit memory save outside a session
-			OwnerType:  "user",
-			Type:       "explicit_memory",
-			Title:      "Explicit memory save",
-			Narrative:  a.Content,
-			Concepts:   a.Concepts,
-			Files:      a.Files,
-			Importance: 0.8,
+		// Create memory entry directly (bypasses observation pipeline — explicit saves
+		// go straight to long-term memory, not through the observe→compress chain)
+		if svc.Pool == nil {
+			return jsonResult(map[string]interface{}{
+				"memory_id": uuid.New().String(),
+				"status":    "saved",
+				"note":      "in-memory mode (no database pool)",
+			})
 		}
-
-		obs, err := svc.Observation.RecordObservation(ctx, input)
+		queries := store.New(svc.Pool)
+		mem, err := queries.InsertMemory(ctx, store.InsertMemoryParams{
+			ID:         uuid.New().String(),
+			OwnerType:  "user",
+			Visibility: "private",
+			Content:    a.Content,
+			Concepts:   a.Concepts,
+			Source:     "manual_save",
+			Confidence: 0.8,
+		})
 		if err != nil {
 			return &mcp.CallToolResult{
 				IsError: true,
@@ -377,8 +385,8 @@ func registerMemorySave(mcpServer *mcp.Server, svc *ServiceBundle) {
 		}
 
 		return jsonResult(map[string]interface{}{
-			"observation_id": obs.ID,
-			"status":         "saved",
+			"memory_id": mem.ID,
+			"status":    "saved",
 		})
 	})
 }

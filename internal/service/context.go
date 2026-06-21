@@ -132,9 +132,16 @@ func (s *ContextService) gatherRecap(ctx context.Context, userID string) (string
 	return strings.Join(parts, "\n"), nil
 }
 
-// gatherLessons finds relevant lessons.
+// gatherLessons finds lessons relevant to the user's team.
 func (s *ContextService) gatherLessons(ctx context.Context, userID string) (string, error) {
-	lessons, err := s.queries.ListAllLessons(ctx, 10)
+	// Get the user's team for scoping
+	team, err := s.queries.GetUserTeam(ctx, userID)
+	if err != nil {
+		// No team — user only sees their own lessons (none at team scope)
+		return "", nil
+	}
+
+	lessons, err := s.queries.ListLessonsByTeam(ctx, &team.ID)
 	if err != nil {
 		return "", err
 	}

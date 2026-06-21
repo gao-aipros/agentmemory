@@ -43,6 +43,9 @@ func GenerateAPIKey() (prefix string, fullKey string, hash string, err error) {
 	// Prefix is "ak_" + first 8 characters of the hash
 	prefix = APIKeyPrefix + hash[:APIKeyPrefixLength]
 
+	// Prepend the "ak_" prefix to fullKey so users get a ready-to-use Bearer token
+	fullKey = APIKeyPrefix + fullKey
+
 	return prefix, fullKey, hash, nil
 }
 

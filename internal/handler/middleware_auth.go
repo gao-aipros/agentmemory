@@ -117,8 +117,9 @@ func validateSessionToken(token string, secret string, queries *store.Queries) (
 
 // validateAPIKey validates an API key token (by prefix lookup) and returns the corresponding user.
 func validateAPIKey(token string, queries *store.Queries) (*store.User, error) {
-	// Look up API key by the prefix — we hash the token to find the stored key
-	hash, err := auth.HashKey(token)
+	// Strip the "ak_" prefix before hashing — stored hash was computed from bare hex key
+	bareKey := strings.TrimPrefix(token, auth.APIKeyPrefix)
+	hash, err := auth.HashKey(bareKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash API key: %w", err)
 	}

@@ -200,7 +200,7 @@ func TestAuthFlow_APIKeyCreation(t *testing.T) {
 	prefix, fullKey, keyHash, err := auth.GenerateAPIKey()
 	require.NoError(t, err)
 	assert.True(t, auth.ValidateKeyPrefix(prefix), "prefix should start with ak_")
-	assert.Len(t, fullKey, 64, "full key should be 64 hex characters (32 bytes)")
+	assert.Len(t, fullKey, 64+len(auth.APIKeyPrefix), "full key should include ak_ prefix + 64 hex chars")
 	assert.Len(t, keyHash, 64, "SHA-256 hash should be 64 hex characters")
 	assert.Equal(t, prefix[3:], keyHash[:8], "prefix should match first 8 chars of hash")
 
