@@ -166,13 +166,10 @@ func optStringProp(description string) map[string]interface{} {
 // =============================================================================
 
 // RegisterAllTools registers every agentmemory MCP tool on the given server.
-// The pool is used to create all service dependencies. If pool is nil, tools
-// are still registered but will return service-unavailable errors when called.
-func RegisterAllTools(mcpServer *mcp.Server, pool *pgxpool.Pool) {
-	var svc *ServiceBundle
-	if pool != nil {
-		svc = NewServiceBundle(pool)
-	} else {
+// The svc bundle provides all service dependencies. If svc is nil, an empty
+// ServiceBundle is used and tools will return service-unavailable errors when called.
+func RegisterAllTools(mcpServer *mcp.Server, svc *ServiceBundle) {
+	if svc == nil {
 		svc = &ServiceBundle{}
 	}
 

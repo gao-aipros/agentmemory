@@ -12,6 +12,7 @@ import (
 
 	"github.com/agentmemory/agentmemory/internal/config"
 	"github.com/agentmemory/agentmemory/internal/handler"
+	"github.com/agentmemory/agentmemory/internal/mcp"
 	"github.com/spf13/cobra"
 )
 
@@ -80,8 +81,12 @@ Use --migrate-on-startup to auto-apply pending migrations.`,
 
 			slog.Info("database connection pool created")
 
-			// Create HTTP router
-			router := handler.NewRouter(pool)
+			// Create shared ServiceBundle once — both REST router and MCP handler
+			// use the same service instances, avoiding duplicate wiring.
+			bundle := mcp.NewServiceBundle(pool)
+
+			// Create HTTP router with the shared bundle
+			router := handler.NewRouter(bundle)
 
 			// Replace placeholder health check with real one
 			// Note: NewRouter sets a placeholder; we override it here.

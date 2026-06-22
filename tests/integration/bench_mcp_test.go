@@ -227,7 +227,7 @@ func TestBenchMCPRealToolLatency(t *testing.T) {
 		&sdkmcp.ServerOptions{},
 	)
 
-	mcp.RegisterAllTools(mcpServer, db.Pool)
+	mcp.RegisterAllTools(mcpServer, mcp.NewServiceBundle(db.Pool))
 
 	inServer, inClient := sdkmcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())

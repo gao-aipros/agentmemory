@@ -12,6 +12,7 @@ import (
 
 	"github.com/agentmemory/agentmemory/internal/config"
 	"github.com/agentmemory/agentmemory/internal/handler"
+	"github.com/agentmemory/agentmemory/internal/mcp"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,7 +35,7 @@ func TestWebSocketConnectAndReceiveEvents(t *testing.T) {
 	require.NoError(t, err)
 	defer config.ClosePool(pool)
 
-	router := handler.NewRouter(pool)
+	router := handler.NewRouter(mcp.NewServiceBundle(pool))
 	testServer := httptest.NewServer(router)
 	defer testServer.Close()
 

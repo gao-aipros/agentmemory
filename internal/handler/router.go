@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/agentmemory/agentmemory/internal/service"
+	"github.com/agentmemory/agentmemory/internal/mcp"
 	"github.com/agentmemory/agentmemory/internal/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -14,9 +14,10 @@ import (
 )
 
 // NewRouter creates and configures the chi HTTP router with middleware and route groups.
-// If pool is nil, the router is created without database-backed handlers.
-func NewRouter(pool *pgxpool.Pool) chi.Router {
-	// Create service dependencies
+// bundle is the shared ServiceBundle created once at startup by cmd/serve.
+// If bundle or bundle.Pool is nil, the router is created without database-backed handlers.
+func NewRouter(bundle *mcp.ServiceBundle) chi.Router {
+	// Create service dependencies from the shared bundle
 	var restHandler *RESTHandler
 	var authHandler *AuthHandler
 	var healthHandler *HealthHandler
@@ -24,39 +25,16 @@ func NewRouter(pool *pgxpool.Pool) chi.Router {
 	var viewerHandler *ViewerHandler
 
 	wsHub := NewWSHub()
+	var pool *pgxpool.Pool
 
-	if pool != nil {
-		llmSvc, llmErr := service.NewLLMService()
-		if llmErr != nil {
-			slog.Warn("LLM service not configured — compression, summarization, consolidation disabled", "error", llmErr)
-			llmSvc = service.NewLLMServiceWithModel(nil)
-		}
-		embedSvc, embedErr := service.NewEmbeddingService(pool)
-		if embedErr != nil {
-			slog.Warn("Embedding service not configured — semantic search disabled", "error", embedErr)
-			embedSvc = &service.EmbeddingService{}
-		}
-		compressor := service.NewCompressionService(pool, llmSvc, embedSvc)
-		obsSvc := service.NewObservationService(pool, compressor)
-		sessionSvc := service.NewSessionService(pool)
+	if bundle != nil && bundle.Pool != nil {
+		pool = bundle.Pool
 
-		// Summarization and consolidation depend on LLM
-		summarizer := service.NewSummarizationService(pool, llmSvc)
-		mode := service.DefaultConsolidationMode("member_choice", false)
-		consolidator := service.NewConsolidationService(pool, llmSvc, mode)
-		reflector := service.NewReflectionService(pool, 3600)
-
-		sessionEndH := service.NewSessionEndHandler(
-			sessionSvc, summarizer, consolidator, reflector,
-		)
-
-		restHandler = NewRESTHandler(obsSvc, sessionSvc, sessionEndH)
+		// Use services from the shared bundle (created once at startup)
+		restHandler = NewRESTHandler(bundle.Observation, bundle.Session, bundle.SessionEnd)
 
 		// Auth services
-		userSvc := service.NewUserService(pool)
-		teamSvc := service.NewTeamService(pool)
-		memberSvc := service.NewTeamMembersService(pool)
-		authHandler = NewAuthHandler(userSvc, teamSvc, memberSvc)
+		authHandler = NewAuthHandler(bundle.User, bundle.Team, bundle.Members)
 
 		// Health handler with real DB checker
 		healthHandler = NewHealthHandler(&dbHealthChecker{pool: pool, queries: store.New(pool)})
@@ -182,7 +160,7 @@ func NewRouter(pool *pgxpool.Pool) chi.Router {
 		})
 
 		// MCP route — StreamableHTTP handler supports both GET (SSE) and POST (JSON-RPC)
-		r.Mount("/v1/mcp", NewMCPHandler(pool))
+		r.Mount("/v1/mcp", NewMCPHandler(bundle))
 	})
 
 	return r

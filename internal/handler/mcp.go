@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/agentmemory/agentmemory/internal/mcp"
-	"github.com/jackc/pgx/v5/pgxpool"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -13,15 +12,15 @@ import (
 // It sets up a StreamableHTTP handler at /v1/mcp that services MCP client connections.
 //
 // The getServer function creates a fresh MCP server for each new session,
-// registering all agentmemory tools. This is stateless — each session gets
-// a fully independent MCP server instance.
+// registering all agentmemory tools. The same ServiceBundle is shared across
+// all sessions — services are stateless wrappers around the DB pool and LLM.
 //
 // Server info:
 //   - name: "agentmemory-v2"
 //   - version: "2.0.0"
-func NewMCPHandler(pool *pgxpool.Pool) http.Handler {
+func NewMCPHandler(bundle *mcp.ServiceBundle) http.Handler {
 	getServer := func(r *http.Request) *sdkmcp.Server {
-		if pool == nil {
+		if bundle == nil || bundle.Pool == nil {
 			slog.Warn("MCP request received but database pool is nil")
 			return nil
 		}
@@ -37,8 +36,8 @@ func NewMCPHandler(pool *pgxpool.Pool) http.Handler {
 			},
 		)
 
-		// Register all agentmemory tools
-		mcp.RegisterAllTools(mcpServer, pool)
+		// Register all agentmemory tools using the shared ServiceBundle
+		mcp.RegisterAllTools(mcpServer, bundle)
 
 		return mcpServer
 	}

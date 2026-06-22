@@ -93,7 +93,7 @@ func TestBenchStartupWithDB(t *testing.T) {
 		&sdkmcp.Implementation{Name: "agentmemory-v2", Version: "2.0.0"},
 		&sdkmcp.ServerOptions{},
 	)
-	mcp.RegisterAllTools(mcpServer, pool)
+	mcp.RegisterAllTools(mcpServer, svc)
 	mcpFullInitTime := time.Since(stepStart)
 	t.Logf("MCP server with full services: %v", mcpFullInitTime)
 	assert.Less(t, mcpFullInitTime, 5*time.Second, "MCP server init should be <5s")
@@ -244,7 +244,7 @@ func TestBenchStartupSequentialInit(t *testing.T) {
 		&sdkmcp.Implementation{Name: "agentmemory-v2", Version: "2.0.0"},
 		&sdkmcp.ServerOptions{},
 	)
-	mcp.RegisterAllTools(mcpServer, pool)
+	mcp.RegisterAllTools(mcpServer, mcp.NewServiceBundle(pool))
 
 	initTime := time.Since(start)
 	t.Logf("Sequential init (pool + store + services + MCP): %v (target: <10s)", initTime)
