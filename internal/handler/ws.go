@@ -128,9 +128,8 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Check that the token is a session token (the middleware already validates,
 	// but we double-check that API keys are rejected)
-	token := r.Header.Get("Authorization")
+	token := extractToken(r)
 	if token != "" {
-		token = token[len("Bearer "):]
 		if len(token) >= len(auth.APIKeyPrefix) && token[:len(auth.APIKeyPrefix)] == auth.APIKeyPrefix {
 			writeError(w, http.StatusForbidden, "API keys are not allowed for WebSocket; use a session token")
 			return

@@ -26,14 +26,11 @@ func AuthMiddleware(pool *pgxpool.Pool) func(next http.Handler) http.Handler {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			token := r.Header.Get("Authorization")
+			token := extractToken(r)
 			if token == "" {
 				writeError(w, http.StatusUnauthorized, "authentication required")
 				return
 			}
-
-			// Strip "Bearer " prefix if present
-			token = strings.TrimPrefix(token, "Bearer ")
 
 			var user *store.User
 			var err error
@@ -70,12 +67,23 @@ func AuthMiddleware(pool *pgxpool.Pool) func(next http.Handler) http.Handler {
 	}
 }
 
+// extractToken extracts a token from an HTTP request.
+// It first checks the ?token= query parameter, then falls back to
+// the Authorization header (stripping the "Bearer " prefix if present).
+func extractToken(r *http.Request) string {
+	if token := r.URL.Query().Get("token"); token != "" {
+		return token
+	}
+	token := r.Header.Get("Authorization")
+	token = strings.TrimPrefix(token, "Bearer ")
+	return token
+}
+
 // RequireSessionToken is a middleware that rejects API key tokens (ak_ prefix).
 // It is used for UI routes (/, /v1/socket) where only session tokens are allowed.
 func RequireSessionToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := r.Header.Get("Authorization")
-		token = strings.TrimPrefix(token, "Bearer ")
+		token := extractToken(r)
 
 		// If the token looks like an API key, reject it
 		if strings.HasPrefix(token, auth.APIKeyPrefix) {
