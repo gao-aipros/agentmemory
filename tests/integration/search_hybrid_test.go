@@ -28,7 +28,7 @@ func TestHybridSearch_BM25VectorCombinedRanking(t *testing.T) {
 	searchSvc := service.NewSearchService(db.Pool, nil)
 
 	// Perform a hybrid search
-	results, err := searchSvc.HybridSearch(ctx, "PostgreSQL connection pool configuration", 10)
+	results, err := searchSvc.HybridSearch(ctx, "PostgreSQL connection pool configuration", 10, "user-001")
 	require.NoError(t, err)
 	require.NotEmpty(t, results, "search should return results")
 
@@ -59,7 +59,7 @@ func TestHybridSearch_GraphBonus(t *testing.T) {
 	require.NoError(t, SeedTestGraph(db.Pool))
 
 	searchSvc := service.NewSearchService(db.Pool, nil)
-	results, err := searchSvc.HybridSearch(ctx, "PostgreSQL", 10)
+	results, err := searchSvc.HybridSearch(ctx, "PostgreSQL", 10, "user-001")
 	require.NoError(t, err)
 
 	// Graph scores should be present for results that have graph connections
@@ -86,7 +86,7 @@ func TestHybridSearch_EmptyResults(t *testing.T) {
 	require.NoError(t, RunMigrations(db.Pool))
 
 	searchSvc := service.NewSearchService(db.Pool, nil)
-	results, err := searchSvc.HybridSearch(ctx, "zzz_nonexistent_query_xyz", 10)
+	results, err := searchSvc.HybridSearch(ctx, "zzz_nonexistent_query_xyz", 10, "user-001")
 	require.NoError(t, err)
 
 	// Should return empty results, not error

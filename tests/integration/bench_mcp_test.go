@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/agentmemory/agentmemory/internal/mcp"
+	"github.com/jackc/pgx/v5/pgxpool"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -96,7 +97,10 @@ var stubWriteTools = []struct {
 
 // TestBenchMCPReadLatency measures MCP layer overhead for read-heavy stub tools.
 func TestBenchMCPReadLatency(t *testing.T) {
-	_, session, ctx, cancel := setupMCPServer(t, nil)
+	db := SetupTestDB(t)
+	defer TeardownTestDB(t, db)
+
+	_, session, ctx, cancel := setupMCPServer(t, db.Pool)
 	defer cancel()
 	defer session.Close()
 
@@ -130,7 +134,10 @@ func TestBenchMCPReadLatency(t *testing.T) {
 
 // TestBenchMCPWriteLatency measures MCP layer overhead for write-heavy stub tools.
 func TestBenchMCPWriteLatency(t *testing.T) {
-	_, session, ctx, cancel := setupMCPServer(t, nil)
+	db := SetupTestDB(t)
+	defer TeardownTestDB(t, db)
+
+	_, session, ctx, cancel := setupMCPServer(t, db.Pool)
 	defer cancel()
 	defer session.Close()
 
@@ -165,7 +172,10 @@ func TestBenchMCPWriteLatency(t *testing.T) {
 // TestBenchMCPRoundtripStubTiming measures full request/response cycles
 // for stub tool calls, measuring raw MCP transport overhead.
 func TestBenchMCPRoundtripStubTiming(t *testing.T) {
-	_, session, ctx, cancel := setupMCPServer(t, nil)
+	db := SetupTestDB(t)
+	defer TeardownTestDB(t, db)
+
+	_, session, ctx, cancel := setupMCPServer(t, db.Pool)
 	defer cancel()
 	defer session.Close()
 
@@ -227,7 +237,7 @@ func TestBenchMCPRealToolLatency(t *testing.T) {
 		&sdkmcp.ServerOptions{},
 	)
 
-	mcp.RegisterAllTools(mcpServer, db.Pool)
+	mcp.RegisterAllTools(mcpServer, mcp.NewServiceBundle(db.Pool))
 
 	inServer, inClient := sdkmcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -280,7 +290,10 @@ func TestBenchMCPRealToolLatency(t *testing.T) {
 
 // TestBenchMCPAuthToolStubLatency measures auth stub tool overhead.
 func TestBenchMCPAuthToolStubLatency(t *testing.T) {
-	_, session, ctx, cancel := setupMCPServer(t, nil)
+	db := SetupTestDB(t)
+	defer TeardownTestDB(t, db)
+
+	_, session, ctx, cancel := setupMCPServer(t, db.Pool)
 	defer cancel()
 	defer session.Close()
 
@@ -346,7 +359,7 @@ func TestBenchMCPAuthToolStubLatency(t *testing.T) {
 
 // setupMCPServer creates an in-memory MCP server with all tools registered
 // and returns the connected client session for testing.
-func setupMCPServer(t *testing.T, services interface{}) (*sdkmcp.Server, *sdkmcp.ClientSession, context.Context, context.CancelFunc) {
+func setupMCPServer(t *testing.T, pool *pgxpool.Pool) (*sdkmcp.Server, *sdkmcp.ClientSession, context.Context, context.CancelFunc) {
 	t.Helper()
 
 	mcpServer := sdkmcp.NewServer(
@@ -354,9 +367,8 @@ func setupMCPServer(t *testing.T, services interface{}) (*sdkmcp.Server, *sdkmcp
 		&sdkmcp.ServerOptions{},
 	)
 
-	// Register all tools with nil pool — stub tools will work safely;
-	// non-stub tools (recall, observe, etc.) will panic if called.
-	mcp.RegisterAllTools(mcpServer, nil)
+	// Register all tools with a real service bundle backed by the pool.
+	mcp.RegisterAllTools(mcpServer, mcp.NewServiceBundle(pool))
 
 	inServer, inClient := sdkmcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())

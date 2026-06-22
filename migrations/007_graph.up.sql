@@ -33,13 +33,16 @@ WITH (key_field='id');
 
 -- PL/pgSQL wrapper function for BM25 search.
 -- Hides the ParadeDB @@? operator from sqlc so queries pass through transparently.
-CREATE OR REPLACE FUNCTION bm25_search(query_text text, result_limit int)
+-- owner_user_id filters results to a single tenant (cross-tenant isolation).
+-- When owner_user_id is NULL, no user filter is applied (admin use only).
+CREATE OR REPLACE FUNCTION bm25_search(query_text text, result_limit int, owner_user_id text)
 RETURNS TABLE(id text, bm25_score float8) AS $$
 BEGIN
     RETURN QUERY
     SELECT observations.id, paradedb.score(observations.id)::float8
     FROM observations
     WHERE observations @@@ paradedb.parse(query_text)
+      AND (bm25_search.owner_user_id IS NULL OR observations.owner_user_id = bm25_search.owner_user_id)
     ORDER BY paradedb.score(observations.id) DESC
     LIMIT result_limit;
 END;
@@ -47,10 +50,13 @@ $$ LANGUAGE plpgsql STABLE;
 
 -- PL/pgSQL wrapper for full hybrid BM25 + vector search.
 -- Combines both search streams via FULL OUTER JOIN and applies weights.
+-- owner_user_id filters results to a single tenant (cross-tenant isolation).
+-- When owner_user_id is NULL, no user filter is applied (admin use only).
 CREATE OR REPLACE FUNCTION hybrid_search(
     query_text text,
     query_embedding vector,
-    result_limit int
+    result_limit int,
+    owner_user_id text
 )
 RETURNS TABLE(id text, combined_score float8, bm25_score float8, vector_score float8) AS $$
 BEGIN
@@ -58,12 +64,14 @@ BEGIN
     WITH
     bm25_hits AS (
         SELECT b.id, b.bm25_score
-        FROM bm25_search(query_text, result_limit) b
+        FROM bm25_search(query_text, result_limit, owner_user_id) b
     ),
     vector_hits AS (
         SELECT oe.observation_id AS id, (1.0 - (oe.embedding <=> query_embedding))::float8 AS vector_score
         FROM observation_embeddings oe
+        JOIN observations o ON oe.observation_id = o.id
         WHERE oe.embedding IS NOT NULL
+          AND (hybrid_search.owner_user_id IS NULL OR o.owner_user_id = hybrid_search.owner_user_id)
         ORDER BY oe.embedding <=> query_embedding
         LIMIT result_limit
     )

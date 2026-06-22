@@ -28,6 +28,8 @@ type Config struct {
 	LogLevel string
 
 	// LLM / Embedding providers
+	OpenAIAPIKey      string
+	AnthropicAPIKey   string
 	EmbeddingProvider string
 	EmbeddingModel    string
 	LLMProvider       string
@@ -46,6 +48,8 @@ func Load() *Config {
 		InjectContext:     getEnvBool("AGENTMEMORY_INJECT_CONTEXT", false),
 		ShareConsolidated: getEnvBool("AGENTMEMORY_SHARE_CONSOLIDATED", false),
 		LogLevel:          getEnv("LOG_LEVEL", "info"),
+		OpenAIAPIKey:      getEnv("OPENAI_API_KEY", ""),
+		AnthropicAPIKey:   getEnv("ANTHROPIC_API_KEY", ""),
 		EmbeddingProvider: getEnv("EMBEDDING_PROVIDER", ""),
 		EmbeddingModel:    getEnv("EMBEDDING_MODEL", ""),
 		LLMProvider:       getEnv("LLM_PROVIDER", ""),

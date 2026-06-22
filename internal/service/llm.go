@@ -3,33 +3,90 @@ package service
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
+
+	"github.com/tmc/langchaingo/llms"
+	"github.com/tmc/langchaingo/llms/anthropic"
+	"github.com/tmc/langchaingo/llms/openai"
 )
 
-// LLMService wraps the langchaingo LLM interface for provider-agnostic
-// LLM calls. In production this uses langchaingo; for testing, a mock
-// satisfies the same interface.
+// LLMService wraps a langchaingo llms.Model, providing provider-agnostic
+// LLM calls. The model is selected via the LLM_PROVIDER environment variable.
+// LLM_MODEL and the provider-specific API key env vars (OPENAI_API_KEY,
+// ANTHROPIC_API_KEY) control which model is used.
 type LLMService struct {
-	// provider is the LLM backend (e.g., langchaingo/llms.Model).
-	// In MVP, this is configured via env vars (LLM_PROVIDER, LLM_MODEL).
-	// When nil, Call returns a descriptive error.
-	provider LLMProvider
+	model llms.Model
 }
 
-// LLMProvider abstracts the LLM backend so we stay provider-agnostic.
-type LLMProvider interface {
-	Call(ctx context.Context, prompt string) (string, error)
+// NewLLMService creates an LLMService from environment variables.
+// LLM_PROVIDER: "openai" (default) or "anthropic".
+// LLM_MODEL: the model name (provider-specific default if unset).
+// OPENAI_API_KEY: required when LLM_PROVIDER=openai.
+// ANTHROPIC_API_KEY: required when LLM_PROVIDER=anthropic.
+func NewLLMService() (*LLMService, error) {
+	provider := strings.ToLower(os.Getenv("LLM_PROVIDER"))
+	if provider == "" {
+		provider = "openai"
+	}
+
+	switch provider {
+	case "openai":
+		return newOpenAILLM()
+	case "anthropic":
+		return newAnthropicLLM()
+	default:
+		return nil, fmt.Errorf("unsupported LLM_PROVIDER %q: must be \"openai\" or \"anthropic\"", provider)
+	}
 }
 
-// NewLLMService creates a new LLMService with the given provider.
-// If provider is nil, calls to Call will return an error.
-func NewLLMService(provider LLMProvider) *LLMService {
-	return &LLMService{provider: provider}
+// NewLLMServiceWithModel creates an LLMService with a pre-built model.
+// Used in tests to inject mock models without requiring real API keys.
+func NewLLMServiceWithModel(model llms.Model) *LLMService {
+	return &LLMService{model: model}
+}
+
+// Model returns the underlying langchaingo llms.Model (for testing/assertions).
+func (s *LLMService) Model() llms.Model {
+	return s.model
 }
 
 // Call sends a prompt to the LLM and returns the response text.
 func (s *LLMService) Call(ctx context.Context, prompt string) (string, error) {
-	if s.provider == nil {
-		return "", fmt.Errorf("LLM service not configured — set LLM_PROVIDER and LLM_MODEL env vars")
+	if s.model == nil {
+		return "", fmt.Errorf("LLM service not configured — set LLM_PROVIDER and required API key env vars")
 	}
-	return s.provider.Call(ctx, prompt)
+	return s.model.Call(ctx, prompt)
+}
+
+// newOpenAILLM creates an OpenAI LLM from environment variables.
+func newOpenAILLM() (*LLMService, error) {
+	opts := []openai.Option{}
+
+	if model := os.Getenv("LLM_MODEL"); model != "" {
+		opts = append(opts, openai.WithModel(model))
+	}
+
+	llm, err := openai.New(opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create OpenAI LLM: %w", err)
+	}
+
+	return &LLMService{model: llm}, nil
+}
+
+// newAnthropicLLM creates an Anthropic LLM from environment variables.
+func newAnthropicLLM() (*LLMService, error) {
+	opts := []anthropic.Option{}
+
+	if model := os.Getenv("LLM_MODEL"); model != "" {
+		opts = append(opts, anthropic.WithModel(model))
+	}
+
+	llm, err := anthropic.New(opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Anthropic LLM: %w", err)
+	}
+
+	return &LLMService{model: llm}, nil
 }

@@ -6,16 +6,18 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/agentmemory/agentmemory/internal/service"
+	"github.com/agentmemory/agentmemory/internal/mcp"
+	"github.com/agentmemory/agentmemory/internal/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // NewRouter creates and configures the chi HTTP router with middleware and route groups.
-// If pool is nil, the router is created without database-backed handlers.
-func NewRouter(pool *pgxpool.Pool) chi.Router {
-	// Create service dependencies
+// bundle is the shared ServiceBundle created once at startup by cmd/serve.
+// If bundle or bundle.Pool is nil, the router is created without database-backed handlers.
+func NewRouter(bundle *mcp.ServiceBundle) chi.Router {
+	// Create service dependencies from the shared bundle
 	var restHandler *RESTHandler
 	var authHandler *AuthHandler
 	var healthHandler *HealthHandler
@@ -23,34 +25,19 @@ func NewRouter(pool *pgxpool.Pool) chi.Router {
 	var viewerHandler *ViewerHandler
 
 	wsHub := NewWSHub()
+	var pool *pgxpool.Pool
 
-	if pool != nil {
-		llmSvc := service.NewLLMService(nil) // No LLM provider configured by default
-		embedSvc := service.NewEmbeddingService(pool, nil)
-		compressor := service.NewCompressionService(pool, llmSvc, embedSvc)
-		obsSvc := service.NewObservationService(pool, compressor)
-		sessionSvc := service.NewSessionService(pool)
+	if bundle != nil && bundle.Pool != nil {
+		pool = bundle.Pool
 
-		// Summarization and consolidation depend on LLM
-		summarizer := service.NewSummarizationService(pool, llmSvc)
-		mode := service.DefaultConsolidationMode("member_choice", false)
-		consolidator := service.NewConsolidationService(pool, llmSvc, mode)
-		reflector := service.NewReflectionService(pool, 3600)
-
-		sessionEndH := service.NewSessionEndHandler(
-			sessionSvc, summarizer, consolidator, reflector,
-		)
-
-		restHandler = NewRESTHandler(obsSvc, sessionSvc, sessionEndH)
+		// Use services from the shared bundle (created once at startup)
+		restHandler = NewRESTHandler(bundle.Observation, bundle.Session, bundle.SessionEnd)
 
 		// Auth services
-		userSvc := service.NewUserService(pool)
-		teamSvc := service.NewTeamService(pool)
-		memberSvc := service.NewTeamMembersService(pool)
-		authHandler = NewAuthHandler(userSvc, teamSvc, memberSvc)
+		authHandler = NewAuthHandler(bundle.User, bundle.Team, bundle.Members)
 
 		// Health handler with real DB checker
-		healthHandler = NewHealthHandler(&dbHealthChecker{pool: pool})
+		healthHandler = NewHealthHandler(&dbHealthChecker{pool: pool, queries: store.New(pool)})
 
 		// WebSocket handler
 		wsHandler = NewWSHandler(wsHub)
@@ -173,15 +160,16 @@ func NewRouter(pool *pgxpool.Pool) chi.Router {
 		})
 
 		// MCP route — StreamableHTTP handler supports both GET (SSE) and POST (JSON-RPC)
-		r.Mount("/v1/mcp", NewMCPHandler(pool))
+		r.Mount("/v1/mcp", NewMCPHandler(bundle))
 	})
 
 	return r
 }
 
-// dbHealthChecker implements HealthChecker using a pgxpool.Pool.
+// dbHealthChecker implements HealthChecker using sqlc-generated store queries.
 type dbHealthChecker struct {
-	pool *pgxpool.Pool
+	pool    *pgxpool.Pool
+	queries *store.Queries
 }
 
 func (c *dbHealthChecker) Ping(ctx context.Context) error {
@@ -189,30 +177,26 @@ func (c *dbHealthChecker) Ping(ctx context.Context) error {
 }
 
 func (c *dbHealthChecker) HasPendingMigrations() (bool, error) {
-	bgCtx := context.Background()
+	ctx := context.Background()
 
 	// Check if the migration version table exists
-	var exists bool
-	err := c.pool.QueryRow(bgCtx,
-		"SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'schema_migrations')",
-	).Scan(&exists)
+	exists, err := c.queries.CheckSchemaMigrationsTableExists(ctx)
 	if err != nil {
 		return false, err
 	}
 	if !exists {
-		// No migrations table — assume migrations haven't been run yet
-		// This is normal for a fresh database that hasn't had setup run
+		// No migrations table — assume migrations haven't been run yet.
+		// This is normal for a fresh database that hasn't had setup run.
 		return false, nil
 	}
 
-	// Check for dirty state in schema_migrations
-	var dirty bool
-	err = c.pool.QueryRow(bgCtx, "SELECT dirty FROM schema_migrations LIMIT 1").Scan(&dirty)
+	// Check for dirty state via sqlc-generated query
+	migration, err := c.queries.GetMigrationVersion(ctx)
 	if err != nil {
-		// Table might exist but be empty (no migrations applied yet)
+		// Table exists but is empty (no migrations applied yet) — this is fine
 		return false, nil
 	}
-	if dirty {
+	if migration.Dirty {
 		// Dirty state is a critical issue, not just pending
 		return true, nil
 	}

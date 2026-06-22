@@ -208,7 +208,7 @@ func TestE2E_FullAgentSession(t *testing.T) {
 	searchSvc := service.NewSearchService(db.Pool, nil)
 
 	// Search for the PostgreSQL timeout content
-	results, err := searchSvc.HybridSearch(ctx, "PostgreSQL connection timeout bugfix", 10)
+	results, err := searchSvc.HybridSearch(ctx, "PostgreSQL connection timeout bugfix", 10, userID)
 	require.NoError(t, err, "search should succeed")
 	require.NotEmpty(t, results, "search should return results for the bugfix content")
 
@@ -229,7 +229,7 @@ func TestE2E_FullAgentSession(t *testing.T) {
 	t.Logf("Search found %d/13 recorded observations", matchCount)
 
 	// Search for permission-related content
-	permResults, err := searchSvc.HybridSearch(ctx, "permission request write tool", 10)
+	permResults, err := searchSvc.HybridSearch(ctx, "permission request write tool", 10, userID)
 	require.NoError(t, err)
 	assert.NotEmpty(t, permResults, "should find permission-related observations")
 
@@ -237,7 +237,7 @@ func TestE2E_FullAgentSession(t *testing.T) {
 	// Step 5: Run context injection to verify it assembles context
 	// =========================================================================
 	slotSvc := service.NewSlotService(db.Pool)
-	embedSvc := service.NewEmbeddingService(db.Pool, nil)
+	embedSvc := service.NewEmbeddingServiceWithEmbedder(db.Pool, nil)
 	ctxSvc := service.NewContextService(db.Pool, embedSvc, slotSvc)
 
 	// Assemble context for the test user

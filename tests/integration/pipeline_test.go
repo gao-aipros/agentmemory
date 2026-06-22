@@ -38,9 +38,8 @@ func TestPipelineObserveToCompressed(t *testing.T) {
 	require.NoError(t, err)
 
 	// Set up services with mock LLM
-	mockLLM := &MockLLMProvider{}
-	llmSvc := service.NewLLMService(mockLLM)
-	embedSvc := service.NewEmbeddingService(db.Pool, nil) // No embed provider for test
+	llmSvc := NewMockLLMService()
+	embedSvc := service.NewEmbeddingServiceWithEmbedder(db.Pool, nil) // No embed provider for test
 	compressor := service.NewCompressionService(db.Pool, llmSvc, embedSvc)
 	obsSvc := service.NewObservationService(db.Pool, compressor)
 

@@ -49,7 +49,7 @@ func TestContextInjection_BudgetRespected(t *testing.T) {
 	require.NoError(t, SeedTestLessons(db.Pool))
 
 	slotSvc := service.NewSlotService(db.Pool)
-	embedSvc := service.NewEmbeddingService(db.Pool, nil)
+	embedSvc := service.NewEmbeddingServiceWithEmbedder(db.Pool, nil)
 	ctxSvc := service.NewContextService(db.Pool, embedSvc, slotSvc)
 
 	// Assemble context for a test user
@@ -84,7 +84,7 @@ func TestContextInjection_SourceBucketsPopulated(t *testing.T) {
 	require.NoError(t, SeedTestGraph(db.Pool))
 
 	slotSvc := service.NewSlotService(db.Pool)
-	embedSvc := service.NewEmbeddingService(db.Pool, nil)
+	embedSvc := service.NewEmbeddingServiceWithEmbedder(db.Pool, nil)
 	ctxSvc := service.NewContextService(db.Pool, embedSvc, slotSvc)
 
 	assembled, err := ctxSvc.AssembleContext(ctx, "user-001")
@@ -167,7 +167,7 @@ func TestContextHookManager_SessionStart_Disabled(t *testing.T) {
 	require.NoError(t, RunMigrations(db.Pool))
 
 	slotSvc := service.NewSlotService(db.Pool)
-	embedSvc := service.NewEmbeddingService(db.Pool, nil)
+	embedSvc := service.NewEmbeddingServiceWithEmbedder(db.Pool, nil)
 	ctxSvc := service.NewContextService(db.Pool, embedSvc, slotSvc)
 
 	// Gate disabled
@@ -190,7 +190,7 @@ func TestContextFormat_ReferenceFormat(t *testing.T) {
 	require.NoError(t, SeedTestObservations(db.Pool))
 
 	slotSvc := service.NewSlotService(db.Pool)
-	embedSvc := service.NewEmbeddingService(db.Pool, nil)
+	embedSvc := service.NewEmbeddingServiceWithEmbedder(db.Pool, nil)
 	ctxSvc := service.NewContextService(db.Pool, embedSvc, slotSvc)
 
 	assembled, err := ctxSvc.AssembleContext(ctx, "user-001")

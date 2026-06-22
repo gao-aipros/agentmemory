@@ -34,7 +34,8 @@ type RecallResult struct {
 // Recall performs the memory_recall operation.
 // format: "compact" returns id/title/score; "full" returns all fields;
 // "narrative" returns a concatenated narrative.
-func (s *RecallService) Recall(ctx context.Context, query string, limit int, format string) (*RecallResult, error) {
+// userID enforces cross-tenant isolation.
+func (s *RecallService) Recall(ctx context.Context, query string, limit int, format string, userID string) (*RecallResult, error) {
 	if limit <= 0 {
 		limit = 10
 	}
@@ -43,7 +44,7 @@ func (s *RecallService) Recall(ctx context.Context, query string, limit int, for
 	}
 
 	// Perform hybrid search
-	results, err := s.searchSvc.HybridSearch(ctx, query, limit)
+	results, err := s.searchSvc.HybridSearch(ctx, query, limit, userID)
 	if err != nil {
 		return nil, fmt.Errorf("recall search failed: %w", err)
 	}

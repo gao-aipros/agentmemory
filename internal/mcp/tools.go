@@ -7,7 +7,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
+	"github.com/agentmemory/agentmemory/internal/auth"
 	"github.com/agentmemory/agentmemory/internal/service"
 	"github.com/agentmemory/agentmemory/internal/store"
 	"github.com/google/uuid"
@@ -40,8 +42,16 @@ type ServiceBundle struct {
 
 // NewServiceBundle creates all service instances from a connection pool.
 func NewServiceBundle(pool *pgxpool.Pool) *ServiceBundle {
-	llmSvc := service.NewLLMService(nil)
-	embedSvc := service.NewEmbeddingService(pool, nil)
+	llmSvc, llmErr := service.NewLLMService()
+	if llmErr != nil {
+		slog.Warn("LLM service not configured — MCP LLM tools disabled", "error", llmErr)
+		llmSvc = service.NewLLMServiceWithModel(nil)
+	}
+	embedSvc, embedErr := service.NewEmbeddingService(pool)
+	if embedErr != nil {
+		slog.Warn("Embedding service not configured — MCP semantic search disabled", "error", embedErr)
+		embedSvc = &service.EmbeddingService{}
+	}
 	compressor := service.NewCompressionService(pool, llmSvc, embedSvc)
 	obsSvc := service.NewObservationService(pool, compressor)
 	sessionSvc := service.NewSessionService(pool)
@@ -156,13 +166,10 @@ func optStringProp(description string) map[string]interface{} {
 // =============================================================================
 
 // RegisterAllTools registers every agentmemory MCP tool on the given server.
-// The pool is used to create all service dependencies. If pool is nil, tools
-// are still registered but will return service-unavailable errors when called.
-func RegisterAllTools(mcpServer *mcp.Server, pool *pgxpool.Pool) {
-	var svc *ServiceBundle
-	if pool != nil {
-		svc = NewServiceBundle(pool)
-	} else {
+// The svc bundle provides all service dependencies. If svc is nil, an empty
+// ServiceBundle is used and tools will return service-unavailable errors when called.
+func RegisterAllTools(mcpServer *mcp.Server, svc *ServiceBundle) {
+	if svc == nil {
 		svc = &ServiceBundle{}
 	}
 
@@ -359,13 +366,6 @@ func registerMemorySave(mcpServer *mcp.Server, svc *ServiceBundle) {
 
 		// Create memory entry directly (bypasses observation pipeline — explicit saves
 		// go straight to long-term memory, not through the observe→compress chain)
-		if svc.Pool == nil {
-			return jsonResult(map[string]interface{}{
-				"memory_id": uuid.New().String(),
-				"status":    "saved",
-				"note":      "in-memory mode (no database pool)",
-			})
-		}
 		queries := store.New(svc.Pool)
 		mem, err := queries.InsertMemory(ctx, store.InsertMemoryParams{
 			ID:         uuid.New().String(),
@@ -426,7 +426,8 @@ func registerMemoryRecall(mcpServer *mcp.Server, svc *ServiceBundle) {
 			a.Format = "compact"
 		}
 
-		result, err := svc.Recall.Recall(ctx, a.Query, a.Limit, a.Format)
+		userID := auth.GetUserIDFromContext(ctx)
+	result, err := svc.Recall.Recall(ctx, a.Query, a.Limit, a.Format, userID)
 		if err != nil {
 			return &mcp.CallToolResult{
 				IsError: true,
@@ -469,7 +470,8 @@ func registerMemorySmartSearch(mcpServer *mcp.Server, svc *ServiceBundle) {
 			a.Limit = 10
 		}
 
-		result, err := svc.SmartSearch.Search(ctx, a.Query, a.Limit, a.ExpandIDs)
+		userID := auth.GetUserIDFromContext(ctx)
+		result, err := svc.SmartSearch.Search(ctx, a.Query, a.Limit, a.ExpandIDs, userID)
 		if err != nil {
 			return &mcp.CallToolResult{
 				IsError: true,
@@ -664,19 +666,26 @@ func registerMemoryLessonSave(mcpServer *mcp.Server, svc *ServiceBundle) {
 		if err := parseArguments(req, &a); err != nil {
 			return nil, err
 		}
-		// Lesson saving is handled via consolidation pipeline in MVP.
-		// This records an explicit lesson-type observation as a bridge.
-		input := service.RecordObservationInput{
-			SessionID:  "lesson",
-			OwnerType:  "user",
-			Type:       "lesson",
-			Title:      "Lesson: " + truncateStr(a.Content, 80),
-			Narrative:  a.Content,
-			Concepts:   a.Tags,
-			Importance:  func() *float64 { v := 0.7; return &v }(), // literal, not pointer deref
+		// Save lesson directly via InsertLesson (lessons go to lessons table,
+		// not through observe→compress which requires a valid session FK)
+		confidence := a.Confidence
+		if confidence == 0 {
+			confidence = 0.5
 		}
-
-		obs, err := svc.Observation.RecordObservation(ctx, input)
+		queries := store.New(svc.Pool)
+		var ctxPtr *string
+		if a.Context != "" {
+			ctxPtr = &a.Context
+		}
+		lesson, err := queries.InsertLesson(ctx, store.InsertLessonParams{
+			ID:         uuid.New().String(),
+			Content:    a.Content,
+			Context:    ctxPtr,
+			Confidence: confidence,
+			TeamID:     nil,
+			Visibility: "team",
+			Source:     "manual_save",
+		})
 		if err != nil {
 			return &mcp.CallToolResult{
 				IsError: true,
@@ -687,7 +696,7 @@ func registerMemoryLessonSave(mcpServer *mcp.Server, svc *ServiceBundle) {
 		}
 
 		return jsonResult(map[string]interface{}{
-			"observation_id": obs.ID,
+			"lesson_id": lesson.ID,
 			"status":         "saved",
 			"note":           "Lesson saved as observation. Full lesson extraction happens during consolidation.",
 		})

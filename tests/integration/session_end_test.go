@@ -36,9 +36,8 @@ func TestSessionEndTriggersPipeline(t *testing.T) {
 	require.NoError(t, err)
 
 	// Record some observations first
-	mockLLM := &MockLLMProvider{}
-	llmSvc := service.NewLLMService(mockLLM)
-	embedSvc := service.NewEmbeddingService(db.Pool, nil)
+	llmSvc := NewMockLLMService()
+	embedSvc := service.NewEmbeddingServiceWithEmbedder(db.Pool, nil)
 	compressor := service.NewCompressionService(db.Pool, llmSvc, embedSvc)
 	obsSvc := service.NewObservationService(db.Pool, compressor)
 
@@ -129,8 +128,7 @@ func TestSessionEndNoObservations(t *testing.T) {
 	require.NoError(t, err)
 
 	// Set up session end handler without observations
-	mockLLM := &MockLLMProvider{}
-	llmSvc := service.NewLLMService(mockLLM)
+	llmSvc := NewMockLLMService()
 	sessionSvc := service.NewSessionService(db.Pool)
 	summarizer := service.NewSummarizationService(db.Pool, llmSvc)
 	mode := service.DefaultConsolidationMode("member_choice", false)

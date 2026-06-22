@@ -69,7 +69,7 @@ func (s *ContextService) AssembleContext(ctx context.Context, userID string) (*A
 	assembled.Lessons = lessons
 
 	// 4. Gather graph neighbors
-	graph, err := s.gatherGraphNeighbors(ctx)
+	graph, err := s.gatherGraphNeighbors(ctx, userID)
 	if err != nil {
 		graph = ""
 	}
@@ -165,10 +165,11 @@ func (s *ContextService) gatherLessons(ctx context.Context, userID string) (stri
 	return strings.Join(parts, "\n"), nil
 }
 
-// gatherGraphNeighbors traverses the graph from recent observations.
+// gatherGraphNeighbors traverses the graph from the user's recent observations.
+// Scoped to userID for cross-tenant isolation.
 // Uses batch fetch to avoid N+1 for observation details.
-func (s *ContextService) gatherGraphNeighbors(ctx context.Context) (string, error) {
-	seedIds, err := s.getRecentObservationIDs(ctx, 10)
+func (s *ContextService) gatherGraphNeighbors(ctx context.Context, userID string) (string, error) {
+	seedIds, err := s.getRecentObservationIDsForUser(ctx, userID, 10)
 	if err != nil || len(seedIds) == 0 {
 		return "", err
 	}
@@ -223,9 +224,13 @@ func (s *ContextService) gatherWorkingMemory(ctx context.Context) (string, error
 	return truncate(content, 300), nil
 }
 
-// getRecentObservationIDs returns IDs of the most recent observations.
-func (s *ContextService) getRecentObservationIDs(ctx context.Context, limit int) ([]string, error) {
-	recentObs, err := s.queries.ListRecentObservations(ctx, int32(limit))
+// getRecentObservationIDsForUser returns IDs of the most recent observations for a specific user.
+// Uses ListObservationsByUserID which joins sessions to filter by user_id.
+func (s *ContextService) getRecentObservationIDsForUser(ctx context.Context, userID string, limit int) ([]string, error) {
+	recentObs, err := s.queries.ListObservationsByUserID(ctx, store.ListObservationsByUserIDParams{
+		UserID: userID,
+		Limit:  int32(limit),
+	})
 	if err != nil {
 		return nil, err
 	}

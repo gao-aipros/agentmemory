@@ -101,7 +101,10 @@ var allMCPToolNames = []string{
 // TestMCPCompat_AllToolsRegistered verifies that all tools in the canonical list
 // are registered and that no unexpected extras exist.
 func TestMCPCompat_AllToolsRegistered(t *testing.T) {
-	_, session, ctx, cancel := setupMCPServer(t, nil)
+	db := SetupTestDB(t)
+	defer TeardownTestDB(t, db)
+
+	_, session, ctx, cancel := setupMCPServer(t, db.Pool)
 	defer cancel()
 	defer session.Close()
 
@@ -140,7 +143,10 @@ func TestMCPCompat_AllToolsRegistered(t *testing.T) {
 
 // TestMCPCompat_AllToolsHaveDescriptions verifies every tool has a non-empty description.
 func TestMCPCompat_AllToolsHaveDescriptions(t *testing.T) {
-	_, session, ctx, cancel := setupMCPServer(t, nil)
+	db := SetupTestDB(t)
+	defer TeardownTestDB(t, db)
+
+	_, session, ctx, cancel := setupMCPServer(t, db.Pool)
 	defer cancel()
 	defer session.Close()
 
@@ -158,7 +164,10 @@ func TestMCPCompat_AllToolsHaveDescriptions(t *testing.T) {
 // TestMCPCompat_AllToolsHaveValidInputSchemas verifies every tool has a valid
 // JSON Schema with "type": "object", "properties", and "required" fields.
 func TestMCPCompat_AllToolsHaveValidInputSchemas(t *testing.T) {
-	_, session, ctx, cancel := setupMCPServer(t, nil)
+	db := SetupTestDB(t)
+	defer TeardownTestDB(t, db)
+
+	_, session, ctx, cancel := setupMCPServer(t, db.Pool)
 	defer cancel()
 	defer session.Close()
 
@@ -188,7 +197,10 @@ func TestMCPCompat_AllToolsHaveValidInputSchemas(t *testing.T) {
 // TestMCPCompat_ParameterSignatures verifies signature contracts for specific
 // tools that have known required parameters.
 func TestMCPCompat_ParameterSignatures(t *testing.T) {
-	_, session, ctx, cancel := setupMCPServer(t, nil)
+	db := SetupTestDB(t)
+	defer TeardownTestDB(t, db)
+
+	_, session, ctx, cancel := setupMCPServer(t, db.Pool)
 	defer cancel()
 	defer session.Close()
 
@@ -281,7 +293,10 @@ func TestMCPCompat_ParameterSignatures(t *testing.T) {
 // - Stub tools return result with IsError=false (not protocol errors)
 // - Known working tools return valid JSON results
 func TestMCPCompat_ErrorHandling(t *testing.T) {
-	_, session, ctx, cancel := setupMCPServer(t, nil)
+	db := SetupTestDB(t)
+	defer TeardownTestDB(t, db)
+
+	_, session, ctx, cancel := setupMCPServer(t, db.Pool)
 	defer cancel()
 	defer session.Close()
 
@@ -331,7 +346,10 @@ func TestMCPCompat_ErrorHandling(t *testing.T) {
 
 // TestMCPCompat_ToolsReturnValidJSON verifies that tool results contain valid JSON.
 func TestMCPCompat_ToolsReturnValidJSON(t *testing.T) {
-	_, session, ctx, cancel := setupMCPServer(t, nil)
+	db := SetupTestDB(t)
+	defer TeardownTestDB(t, db)
+
+	_, session, ctx, cancel := setupMCPServer(t, db.Pool)
 	defer cancel()
 	defer session.Close()
 
@@ -368,8 +386,7 @@ func TestMCPCompat_ToolsReturnValidJSON(t *testing.T) {
 				Arguments: tool.args,
 			})
 
-			// These may fail because pool is nil, but the error response
-			// should still be valid JSON
+			// The error response should still be valid JSON
 			if err != nil {
 				t.Logf("%s protocol error: %v", tool.name, err)
 				return
@@ -392,7 +409,10 @@ func TestMCPCompat_ToolsReturnValidJSON(t *testing.T) {
 // TestMCPCompat_ToolCountMatchesDocuments verifies the registered tool count
 // matches the documented count (55 as of v2.0.0).
 func TestMCPCompat_ToolCountMatchesDocuments(t *testing.T) {
-	_, session, ctx, cancel := setupMCPServer(t, nil)
+	db := SetupTestDB(t)
+	defer TeardownTestDB(t, db)
+
+	_, session, ctx, cancel := setupMCPServer(t, db.Pool)
 	defer cancel()
 	defer session.Close()
 
@@ -448,7 +468,10 @@ func TestMCPCompat_ToolCountMatchesDocuments(t *testing.T) {
 // TestMCPCompat_ServerInfoAdvertised verifies the MCP server advertises
 // the correct implementation name and version.
 func TestMCPCompat_ServerInfoAdvertised(t *testing.T) {
-	_, session, _, cancel := setupMCPServer(t, nil)
+	db := SetupTestDB(t)
+	defer TeardownTestDB(t, db)
+
+	_, session, _, cancel := setupMCPServer(t, db.Pool)
 	defer cancel()
 	defer session.Close()
 
