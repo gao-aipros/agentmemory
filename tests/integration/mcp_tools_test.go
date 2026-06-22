@@ -28,7 +28,7 @@ func TestMCPToolRegistration(t *testing.T) {
 	)
 
 	// Register all tools with nil pool (tools register but services are nil)
-	mcp.RegisterAllTools(mcpServer, nil)
+	mcp.RegisterAllTools(mcpServer, mcp.NewServiceBundle(nil))
 
 	// Connect client to verify tool listing
 	inServer, inClient := sdkmcp.NewInMemoryTransports()
@@ -154,7 +154,7 @@ func TestMCPStubToolsReturnProperly(t *testing.T) {
 		&sdkmcp.ServerOptions{},
 	)
 
-	mcp.RegisterAllTools(mcpServer, nil)
+	mcp.RegisterAllTools(mcpServer, mcp.NewServiceBundle(nil))
 
 	inServer, inClient := sdkmcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -232,7 +232,7 @@ func TestAllToolsHaveDescriptions(t *testing.T) {
 		&sdkmcp.ServerOptions{},
 	)
 
-	mcp.RegisterAllTools(mcpServer, nil)
+	mcp.RegisterAllTools(mcpServer, mcp.NewServiceBundle(nil))
 
 	inServer, inClient := sdkmcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -263,7 +263,7 @@ func TestToolsHaveValidInputSchemas(t *testing.T) {
 		&sdkmcp.ServerOptions{},
 	)
 
-	mcp.RegisterAllTools(mcpServer, nil)
+	mcp.RegisterAllTools(mcpServer, mcp.NewServiceBundle(nil))
 
 	inServer, inClient := sdkmcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())

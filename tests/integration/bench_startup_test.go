@@ -38,7 +38,7 @@ func TestBenchStartupComponentInit(t *testing.T) {
 		&sdkmcp.Implementation{Name: "agentmemory-v2", Version: "2.0.0"},
 		&sdkmcp.ServerOptions{},
 	)
-	mcp.RegisterAllTools(mcpServer, nil)
+	mcp.RegisterAllTools(mcpServer, mcp.NewServiceBundle(nil))
 	mcpInitTime := time.Since(stepStart)
 	t.Logf("MCP server + tool registration: %v", mcpInitTime)
 	assert.Less(t, mcpInitTime, 5*time.Second, "MCP server init should be <5s")
@@ -186,7 +186,7 @@ func TestBenchStartupInMemoryTransport(t *testing.T) {
 		&sdkmcp.Implementation{Name: "agentmemory-v2", Version: "2.0.0"},
 		&sdkmcp.ServerOptions{},
 	)
-	mcp.RegisterAllTools(mcpServer, nil)
+	mcp.RegisterAllTools(mcpServer, mcp.NewServiceBundle(nil))
 
 	// Setup transport
 	inServer, inClient := sdkmcp.NewInMemoryTransports()
