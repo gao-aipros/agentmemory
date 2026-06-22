@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -242,7 +243,10 @@ func TestAuthFlow_APIKeyCreation(t *testing.T) {
 	assert.True(t, updated.LastUsedAt.Valid, "last_used_at should be set after update")
 
 	// List API keys for the user
-	keys, err := queries.ListAPIKeysByUser(ctx, userID)
+	keys, err := queries.ListAPIKeysByUser(ctx, store.ListAPIKeysByUserParams{
+		UserID: userID,
+		Limit:  100,
+	})
 	require.NoError(t, err)
 	assert.Len(t, keys, 1)
 	assert.Equal(t, apiKeyID, keys[0].ID)
@@ -344,7 +348,10 @@ func TestAuthFlow_FullFlow(t *testing.T) {
 	_ = prefix2
 
 	// List both keys
-	allKeys, err := queries.ListAPIKeysByUser(ctx, userID)
+	allKeys, err := queries.ListAPIKeysByUser(ctx, store.ListAPIKeysByUserParams{
+		UserID: userID,
+		Limit:  100,
+	})
 	require.NoError(t, err)
 	assert.Len(t, allKeys, 2, "user should have 2 API keys")
 
@@ -359,4 +366,51 @@ func TestAuthFlow_FullFlow(t *testing.T) {
 	// Verify cascade: user is gone
 	_, err = queries.GetUserByID(ctx, userID)
 	assert.Error(t, err, "deleted user should not be fetchable")
+}
+
+// TestListAPIKeysByUser_Limit verifies that ListAPIKeysByUser respects the LIMIT parameter.
+func TestListAPIKeysByUser_Limit(t *testing.T) {
+	db := SetupTestDB(t)
+	defer TeardownTestDB(t, db)
+
+	ctx := context.Background()
+	runMigrations(t, db)
+
+	queries := store.New(db.Pool)
+
+	// Create a user
+	userID := uuid.New().String()
+	hash, err := auth.HashPassword("limit-test-password")
+	require.NoError(t, err)
+
+	_, err = queries.CreateUser(ctx, store.CreateUserParams{
+		ID:           userID,
+		Email:        "limit-test@example.com",
+		PasswordHash: hash,
+		Name:         "Limit Test User",
+	})
+	require.NoError(t, err)
+
+	// Insert 5 API keys
+	for i := 0; i < 5; i++ {
+		prefix, _, keyHash, err := auth.GenerateAPIKey()
+		require.NoError(t, err)
+
+		_, err = queries.CreateAPIKey(ctx, store.CreateAPIKeyParams{
+			ID:      fmt.Sprintf("%s_%s", prefix, uuid.New().String()),
+			UserID:  userID,
+			Label:   fmt.Sprintf("Key %d", i+1),
+			KeyHash: keyHash,
+		})
+		require.NoError(t, err)
+	}
+	_ = hash
+
+	// Query with limit=3 — use the new params struct
+	keys, err := queries.ListAPIKeysByUser(ctx, store.ListAPIKeysByUserParams{
+		UserID: userID,
+		Limit:  3,
+	})
+	require.NoError(t, err)
+	assert.Len(t, keys, 3, "should return exactly 3 keys with limit=3")
 }

@@ -10,7 +10,7 @@ SELECT * FROM api_keys WHERE id = $1;
 SELECT * FROM api_keys WHERE key_hash = $1;
 
 -- name: ListAPIKeysByUser :many
-SELECT * FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC;
+SELECT * FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2;
 
 -- name: UpdateAPIKeyLastUsed :exec
 UPDATE api_keys SET last_used_at = now() WHERE id = $1;

@@ -94,11 +94,16 @@ func (q *Queries) GetAPIKeyByID(ctx context.Context, id string) (ApiKey, error) 
 }
 
 const listAPIKeysByUser = `-- name: ListAPIKeysByUser :many
-SELECT id, user_id, label, key_hash, last_used_at, created_at, expires_at FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC
+SELECT id, user_id, label, key_hash, last_used_at, created_at, expires_at FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2
 `
 
-func (q *Queries) ListAPIKeysByUser(ctx context.Context, userID string) ([]ApiKey, error) {
-	rows, err := q.db.Query(ctx, listAPIKeysByUser, userID)
+type ListAPIKeysByUserParams struct {
+	UserID string
+	Limit  int32
+}
+
+func (q *Queries) ListAPIKeysByUser(ctx context.Context, arg ListAPIKeysByUserParams) ([]ApiKey, error) {
+	rows, err := q.db.Query(ctx, listAPIKeysByUser, arg.UserID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
