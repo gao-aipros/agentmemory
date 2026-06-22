@@ -149,11 +149,16 @@ func (q *Queries) ListAllLessons(ctx context.Context, arg ListAllLessonsParams) 
 }
 
 const listLessonsByTeam = `-- name: ListLessonsByTeam :many
-SELECT id, team_id, visibility, content, context, confidence, source, created_at, last_reinforced_at, owner_user_id FROM lessons WHERE team_id = $1 ORDER BY created_at DESC
+SELECT id, team_id, visibility, content, context, confidence, source, created_at, last_reinforced_at, owner_user_id FROM lessons WHERE team_id = $1 ORDER BY created_at DESC LIMIT $2
 `
 
-func (q *Queries) ListLessonsByTeam(ctx context.Context, teamID *string) ([]Lesson, error) {
-	rows, err := q.db.Query(ctx, listLessonsByTeam, teamID)
+type ListLessonsByTeamParams struct {
+	TeamID *string
+	Limit  int32
+}
+
+func (q *Queries) ListLessonsByTeam(ctx context.Context, arg ListLessonsByTeamParams) ([]Lesson, error) {
+	rows, err := q.db.Query(ctx, listLessonsByTeam, arg.TeamID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}

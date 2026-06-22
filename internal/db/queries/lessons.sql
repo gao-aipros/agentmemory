@@ -7,7 +7,7 @@ RETURNING *;
 SELECT * FROM lessons WHERE id = $1;
 
 -- name: ListLessonsByTeam :many
-SELECT * FROM lessons WHERE team_id = $1 ORDER BY created_at DESC;
+SELECT * FROM lessons WHERE team_id = $1 ORDER BY created_at DESC LIMIT $2;
 
 -- name: UpdateConfidence :exec
 UPDATE lessons SET confidence = $2, last_reinforced_at = now() WHERE id = $1;
