@@ -2,6 +2,8 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -44,54 +46,100 @@ var stubReadTools = []struct {
 	{"memory_snapshot_create", map[string]interface{}{}},
 }
 
+// benchTool describes a tool to call during benchmarking, with optional
+// per-iteration argument generation and pre-benchmark setup.
+type benchTool struct {
+	name    string
+	args    map[string]interface{}
+	argsFn  func(i int) map[string]interface{}                                     // overrides args when set
+	setupFn func(session *sdkmcp.ClientSession, ctx context.Context) map[string]interface{} // creates prerequisite state, returns args for timed call
+}
+
 // stubWriteTools are write-oriented stub tools safe to call without a DB.
-var stubWriteTools = []struct {
-	name string
-	args map[string]interface{}
-}{
+var stubWriteTools = []benchTool{
 	{
-		"memory_action_create",
-		map[string]interface{}{"title": "Test action"},
+		name: "memory_action_create",
+		args: map[string]interface{}{"title": "Test action"},
 	},
 	{
-		"memory_action_update",
-		map[string]interface{}{"action_id": "test-id", "status": "active"},
+		name: "memory_action_update",
+		args: map[string]interface{}{"action_id": "test-id", "status": "active"},
 	},
 	{
-		"memory_slot_create",
-		map[string]interface{}{"label": "test_slot"},
+		name: "memory_slot_create",
+		argsFn: func(i int) map[string]interface{} {
+			return map[string]interface{}{"label": fmt.Sprintf("bench_slot_%d", i)}
+		},
 	},
 	{
-		"memory_slot_replace",
-		map[string]interface{}{"label": "test_slot", "content": "new content"},
+		name: "memory_slot_replace",
+		setupFn: func(session *sdkmcp.ClientSession, ctx context.Context) map[string]interface{} {
+			label := fmt.Sprintf("bench_repl_%d", time.Now().UnixNano())
+			// Create slot outside timing so replace has valid state.
+			session.CallTool(ctx, &sdkmcp.CallToolParams{
+				Name:      "memory_slot_create",
+				Arguments: map[string]interface{}{"label": label},
+			})
+			return map[string]interface{}{"label": label, "content": "new content"}
+		},
 	},
 	{
-		"memory_slot_delete",
-		map[string]interface{}{"label": "test_slot"},
+		name: "memory_slot_delete",
+		setupFn: func(session *sdkmcp.ClientSession, ctx context.Context) map[string]interface{} {
+			label := fmt.Sprintf("bench_del_%d", time.Now().UnixNano())
+			session.CallTool(ctx, &sdkmcp.CallToolParams{
+				Name:      "memory_slot_create",
+				Arguments: map[string]interface{}{"label": label},
+			})
+			return map[string]interface{}{"label": label}
+		},
 	},
 	{
-		"memory_slot_append",
-		map[string]interface{}{"label": "test_slot", "text": "append text"},
+		name: "memory_slot_append",
+		setupFn: func(session *sdkmcp.ClientSession, ctx context.Context) map[string]interface{} {
+			label := fmt.Sprintf("bench_app_%d", time.Now().UnixNano())
+			session.CallTool(ctx, &sdkmcp.CallToolParams{
+				Name:      "memory_slot_create",
+				Arguments: map[string]interface{}{"label": label},
+			})
+			return map[string]interface{}{"label": label, "text": " append text"}
+		},
 	},
 	{
-		"memory_signal_send",
-		map[string]interface{}{"from": "agent-a", "content": "hello"},
+		name: "memory_signal_send",
+		args: map[string]interface{}{"from": "agent-a", "content": "hello"},
 	},
 	{
-		"memory_sentinel_create",
-		map[string]interface{}{"name": "test-sentinel", "type": "timer"},
+		name: "memory_sentinel_create",
+		args: map[string]interface{}{"name": "test-sentinel", "type": "timer"},
 	},
 	{
-		"memory_sentinel_trigger",
-		map[string]interface{}{"sentinel_id": "test-sentinel-id"},
+		name: "memory_sentinel_trigger",
+		setupFn: func(session *sdkmcp.ClientSession, ctx context.Context) map[string]interface{} {
+			result, err := session.CallTool(ctx, &sdkmcp.CallToolParams{
+				Name: "memory_sentinel_create",
+				Arguments: map[string]interface{}{
+					"name": "bench-sentinel",
+					"type": "timer",
+				},
+			})
+			if err != nil || result.IsError {
+				return map[string]interface{}{"sentinel_id": "unused"}
+			}
+			var created map[string]interface{}
+			if json.Unmarshal([]byte(result.Content[0].(*sdkmcp.TextContent).Text), &created) != nil {
+				return map[string]interface{}{"sentinel_id": "unused"}
+			}
+			return map[string]interface{}{"sentinel_id": created["sentinel_id"]}
+		},
 	},
 	{
-		"memory_checkpoint",
-		map[string]interface{}{"operation": "list"},
+		name: "memory_checkpoint",
+		args: map[string]interface{}{"operation": "list"},
 	},
 	{
-		"memory_sketch_create",
-		map[string]interface{}{"title": "Test sketch"},
+		name: "memory_sketch_create",
+		args: map[string]interface{}{"title": "Test sketch"},
 	},
 }
 
@@ -144,10 +192,19 @@ func TestBenchMCPWriteLatency(t *testing.T) {
 	var latencies []time.Duration
 	for _, tool := range stubWriteTools {
 		for i := 0; i < 3; i++ {
+			// Resolve arguments: setupFn (pre-benchmark state) > argsFn (dynamic) > args (static).
+			args := tool.args
+			if tool.argsFn != nil {
+				args = tool.argsFn(i)
+			}
+			if tool.setupFn != nil {
+				args = tool.setupFn(session, ctx)
+			}
+
 			start := time.Now()
 			result, err := session.CallTool(ctx, &sdkmcp.CallToolParams{
 				Name:      tool.name,
-				Arguments: tool.args,
+				Arguments: args,
 			})
 			elapsed := time.Since(start)
 
@@ -299,30 +356,38 @@ func TestBenchMCPAuthToolStubLatency(t *testing.T) {
 
 	// Auth tools with nil pool will panic (they try to call UserService methods).
 	// Instead, benchmark stub auth-like tools that pass through without DB.
-	authLikeTools := []struct {
-		name string
-		args map[string]interface{}
-	}{
-		{"memory_lease", map[string]interface{}{
+	authLikeTools := []benchTool{
+		{name: "memory_lease", args: map[string]interface{}{
 			"action_id": "test-action",
 			"agent_id":  "test-agent",
 			"operation": "acquire",
 		}},
-		{"memory_routine_run", map[string]interface{}{
-			"routine_id":   "test-routine",
+		{name: "memory_routine_run", args: map[string]interface{}{
+			"routine_id":   "tdd",
 			"initiated_by": "test-agent",
 		}},
-		{"memory_sketch_promote", map[string]interface{}{
-			"sketch_id": "test-sketch",
+		{name: "memory_sketch_promote", setupFn: func(session *sdkmcp.ClientSession, ctx context.Context) map[string]interface{} {
+			result, err := session.CallTool(ctx, &sdkmcp.CallToolParams{
+				Name:      "memory_sketch_create",
+				Arguments: map[string]interface{}{"title": "bench-sketch"},
+			})
+			if err != nil || result.IsError {
+				return map[string]interface{}{"sketch_id": "unused"}
+			}
+			var created map[string]interface{}
+			if json.Unmarshal([]byte(result.Content[0].(*sdkmcp.TextContent).Text), &created) != nil {
+				return map[string]interface{}{"sketch_id": "unused"}
+			}
+			return map[string]interface{}{"sketch_id": created["sketch_id"]}
 		}},
-		{"memory_team_share", map[string]interface{}{
+		{name: "memory_team_share", args: map[string]interface{}{
 			"item_id":   "test-item",
 			"item_type": "observation",
 		}},
-		{"memory_claude_bridge_sync", map[string]interface{}{
+		{name: "memory_claude_bridge_sync", args: map[string]interface{}{
 			"direction": "read",
 		}},
-		{"memory_file_history", map[string]interface{}{
+		{name: "memory_file_history", args: map[string]interface{}{
 			"files": "test/file.go",
 		}},
 	}
@@ -331,10 +396,18 @@ func TestBenchMCPAuthToolStubLatency(t *testing.T) {
 		t.Run(tool.name, func(t *testing.T) {
 			var latencies []time.Duration
 			for i := 0; i < 5; i++ {
+				args := tool.args
+				if tool.argsFn != nil {
+					args = tool.argsFn(i)
+				}
+				if tool.setupFn != nil {
+					args = tool.setupFn(session, ctx)
+				}
+
 				start := time.Now()
 				result, err := session.CallTool(ctx, &sdkmcp.CallToolParams{
 					Name:      tool.name,
-					Arguments: tool.args,
+					Arguments: args,
 				})
 				elapsed := time.Since(start)
 
