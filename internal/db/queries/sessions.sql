@@ -10,7 +10,7 @@ SELECT * FROM sessions WHERE id = $1;
 UPDATE sessions SET ended_at = now(), status = 'ended' WHERE id = $1 RETURNING *;
 
 -- name: ListSessionsByUser :many
-SELECT * FROM sessions WHERE user_id = $1 ORDER BY started_at DESC;
+SELECT * FROM sessions WHERE user_id = $1 ORDER BY started_at DESC LIMIT $2;
 
 -- name: GetActiveSession :one
 SELECT * FROM sessions WHERE user_id = $1 AND status = 'active' LIMIT 1;

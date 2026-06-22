@@ -58,7 +58,10 @@ func TestAllThirteenHookTypes(t *testing.T) {
 
 	// Verify they can be retrieved
 	queries := store.New(db.Pool)
-	observations, err := queries.ListObservationsBySession(ctx, sessionID)
+	observations, err := queries.ListObservationsBySession(ctx, store.ListObservationsBySessionParams{
+		SessionID: sessionID,
+		Limit:     50,
+	})
 	require.NoError(t, err)
 	assert.Len(t, observations, 13, "should have 13 observations in the database")
 

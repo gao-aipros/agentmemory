@@ -173,7 +173,10 @@ func (s *UserService) DeleteUser(ctx context.Context, id string) error {
 
 // ListAPIKeys lists all API keys for a user.
 func (s *UserService) ListAPIKeys(ctx context.Context, userID string) ([]store.ApiKey, error) {
-	keys, err := s.queries.ListAPIKeysByUser(ctx, userID)
+	keys, err := s.queries.ListAPIKeysByUser(ctx, store.ListAPIKeysByUserParams{
+		UserID: userID,
+		Limit:  100,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list API keys: %w", err)
 	}

@@ -7,7 +7,7 @@ RETURNING *;
 SELECT * FROM memories WHERE id = $1;
 
 -- name: ListMemoriesByOwner :many
-SELECT * FROM memories WHERE owner_user_id = $1 ORDER BY created_at DESC;
+SELECT * FROM memories WHERE owner_user_id = $1 ORDER BY created_at DESC LIMIT $2;
 
 -- name: UpdateVisibility :exec
 UPDATE memories SET visibility = $2 WHERE id = $1;

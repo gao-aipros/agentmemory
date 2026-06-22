@@ -15,4 +15,4 @@ RETURNING *;
 DELETE FROM teams WHERE id = $1;
 
 -- name: ListTeamsByOwner :many
-SELECT * FROM teams WHERE owner_id = $1 ORDER BY created_at DESC;
+SELECT * FROM teams WHERE owner_id = $1 ORDER BY created_at DESC LIMIT $2;

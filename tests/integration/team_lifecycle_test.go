@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/agentmemory/agentmemory/internal/auth"
@@ -58,7 +59,10 @@ func TestTeamLifecycle_CreateTeam(t *testing.T) {
 	assert.Equal(t, ownerID, fetched.OwnerID)
 
 	// Owner should see team in their list
-	ownedTeams, err := queries.ListTeamsByOwner(ctx, ownerID)
+	ownedTeams, err := queries.ListTeamsByOwner(ctx, store.ListTeamsByOwnerParams{
+			OwnerID: ownerID,
+			Limit:   100,
+		})
 	require.NoError(t, err)
 	assert.Len(t, ownedTeams, 1)
 	assert.Equal(t, teamID, ownedTeams[0].ID)
@@ -428,4 +432,42 @@ func TestTeamLifecycle_OneTeamPerUser(t *testing.T) {
 		assert.Equal(t, 2, totalUserMemberships,
 			"without DB constraint, direct store calls allow multiple team memberships")
 	}
+}
+
+// TestListTeamsByOwner_Limit verifies that ListTeamsByOwner respects the LIMIT
+// parameter, preventing unbounded result sets as team count grows per owner.
+func TestListTeamsByOwner_Limit(t *testing.T) {
+	db := SetupTestDB(t)
+	defer TeardownTestDB(t, db)
+
+	ctx := context.Background()
+	runMigrations(t, db)
+
+	ownerID := uuid.New().String()
+	hash, err := auth.HashPassword("pw")
+	require.NoError(t, err)
+	_, err = db.Pool.Exec(ctx, `INSERT INTO users (id, email, password_hash, name) VALUES ($1, $2, $3, $4)`,
+		ownerID, "limit-teams-owner@example.com", hash, "Limit Teams Owner")
+	require.NoError(t, err)
+
+	queries := store.New(db.Pool)
+
+	// Insert 5 teams owned by the same user
+	for i := 0; i < 5; i++ {
+		_, err := queries.CreateTeam(ctx, store.CreateTeamParams{
+			ID:                uuid.New().String(),
+			Name:              fmt.Sprintf("Limit-Team-%d", i),
+			OwnerID:           ownerID,
+			DefaultVisibility: "member_choice",
+		})
+		require.NoError(t, err)
+	}
+
+	// Query with limit=3 — should return exactly 3
+	teams, err := queries.ListTeamsByOwner(ctx, store.ListTeamsByOwnerParams{
+		OwnerID: ownerID,
+		Limit:   3,
+	})
+	require.NoError(t, err)
+	assert.Len(t, teams, 3)
 }

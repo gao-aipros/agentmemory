@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -124,12 +125,18 @@ func TestOwnership_PrivateObservation(t *testing.T) {
 	assert.Equal(t, "Bob's private observation", fetchedBob.Title)
 
 	// Verify observations are in each user's session
-	aliceObsList, err := queries.ListObservationsBySession(ctx, aliceSession)
+	aliceObsList, err := queries.ListObservationsBySession(ctx, store.ListObservationsBySessionParams{
+		SessionID: aliceSession,
+		Limit:     50,
+	})
 	require.NoError(t, err)
 	assert.Len(t, aliceObsList, 1)
 	assert.Equal(t, aliceID, *aliceObsList[0].OwnerUserID)
 
-	bobObsList, err := queries.ListObservationsBySession(ctx, bobSession)
+	bobObsList, err := queries.ListObservationsBySession(ctx, store.ListObservationsBySessionParams{
+		SessionID: bobSession,
+		Limit:     50,
+	})
 	require.NoError(t, err)
 	assert.Len(t, bobObsList, 1)
 	assert.Equal(t, bobID, *bobObsList[0].OwnerUserID)
@@ -209,13 +216,19 @@ func TestOwnership_TeamMemorySharing(t *testing.T) {
 	assert.Equal(t, memory.Content, fetched.Content)
 
 	// List memories by Alice (owner) — she should see it
-	aliceMemories, err := queries.ListMemoriesByOwner(ctx, &aliceID)
+	aliceMemories, err := queries.ListMemoriesByOwner(ctx, store.ListMemoriesByOwnerParams{
+		OwnerUserID: &aliceID,
+		Limit:       50,
+	})
 	require.NoError(t, err)
 	assert.Len(t, aliceMemories, 1)
 	assert.Equal(t, memoryID, aliceMemories[0].ID)
 
 	// Bob lists his own memories — should be empty (Alice's is private)
-	bobMemories, err := queries.ListMemoriesByOwner(ctx, &bobID)
+	bobMemories, err := queries.ListMemoriesByOwner(ctx, store.ListMemoriesByOwnerParams{
+		OwnerUserID: &bobID,
+		Limit:       50,
+	})
 	require.NoError(t, err)
 	assert.Empty(t, bobMemories, "Bob should not see Alice's private memory")
 
@@ -325,7 +338,10 @@ func TestOwnership_VisibilityFiltering(t *testing.T) {
 	require.NoError(t, err)
 
 	// Alice's ListMemoriesByOwner returns all 3 of her memories
-	aliceMemories, err := queries.ListMemoriesByOwner(ctx, &aliceID)
+	aliceMemories, err := queries.ListMemoriesByOwner(ctx, store.ListMemoriesByOwnerParams{
+		OwnerUserID: &aliceID,
+		Limit:       50,
+	})
 	require.NoError(t, err)
 	assert.Len(t, aliceMemories, 3, "Alice should have 3 memories")
 
@@ -339,7 +355,10 @@ func TestOwnership_VisibilityFiltering(t *testing.T) {
 	assert.True(t, visibilities["public"], "Alice should have a public memory")
 
 	// Bob's ListMemoriesByOwner returns only his 1 memory
-	bobMemories, err := queries.ListMemoriesByOwner(ctx, &bobID)
+	bobMemories, err := queries.ListMemoriesByOwner(ctx, store.ListMemoriesByOwnerParams{
+		OwnerUserID: &bobID,
+		Limit:       50,
+	})
 	require.NoError(t, err)
 	assert.Len(t, bobMemories, 1, "Bob should have 1 memory")
 	assert.Equal(t, bobMem.ID, bobMemories[0].ID)
@@ -356,9 +375,47 @@ func TestOwnership_VisibilityFiltering(t *testing.T) {
 	assert.Equal(t, "team", updated.Visibility)
 
 	// Alice still has 3 memories
-	aliceMemoriesAfter, err := queries.ListMemoriesByOwner(ctx, &aliceID)
+	aliceMemoriesAfter, err := queries.ListMemoriesByOwner(ctx, store.ListMemoriesByOwnerParams{
+		OwnerUserID: &aliceID,
+		Limit:       50,
+	})
 	require.NoError(t, err)
 	assert.Len(t, aliceMemoriesAfter, 3)
+}
+
+func TestListMemoriesByOwner_Limit(t *testing.T) {
+	db := SetupTestDB(t)
+	defer TeardownTestDB(t, db)
+
+	ctx := context.Background()
+	runMigrations(t, db)
+
+	userID := uuid.New().String()
+	_, err := db.Pool.Exec(ctx, `INSERT INTO users (id, email, password_hash, name) VALUES ($1, $2, $3, $4)`,
+		userID, "limit-mem@example.com", "hash", "Limit Mem User")
+	require.NoError(t, err)
+
+	queries := store.New(db.Pool)
+
+	// Insert 5 memories
+	for i := 0; i < 5; i++ {
+		_, err := queries.InsertMemory(ctx, store.InsertMemoryParams{
+			ID:          uuid.New().String(),
+			OwnerType:   "user",
+			OwnerUserID: &userID,
+			Visibility:  "private",
+			Content:     fmt.Sprintf("memory-%d", i),
+		})
+		require.NoError(t, err)
+	}
+
+	// Query with limit=3 — should return exactly 3
+	memories, err := queries.ListMemoriesByOwner(ctx, store.ListMemoriesByOwnerParams{
+		OwnerUserID: &userID,
+		Limit:       3,
+	})
+	require.NoError(t, err)
+	assert.Len(t, memories, 3)
 }
 
 // strPtr returns a pointer to the given string.

@@ -29,7 +29,10 @@ func NewSummarizationService(pool *pgxpool.Pool, llm *LLMService) *Summarization
 // for summarization, and upserts the result as a SessionSummary.
 func (s *SummarizationService) SummarizeSession(ctx context.Context, sessionID string) error {
 	// Gather observations
-	observations, err := s.queries.ListObservationsBySession(ctx, sessionID)
+	observations, err := s.queries.ListObservationsBySession(ctx, store.ListObservationsBySessionParams{
+		SessionID: sessionID,
+		Limit:     10000,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to list observations: %w", err)
 	}
@@ -127,7 +130,10 @@ func (s *ConsolidationService) ConsolidateSession(ctx context.Context, sessionID
 	}
 
 	// Get observation count
-	observations, err := s.queries.ListObservationsBySession(ctx, sessionID)
+	observations, err := s.queries.ListObservationsBySession(ctx, store.ListObservationsBySessionParams{
+		SessionID: sessionID,
+		Limit:     10000,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to list observations: %w", err)
 	}

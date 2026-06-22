@@ -23,4 +23,4 @@ RETURNING *;
 DELETE FROM users WHERE id = $1;
 
 -- name: ListUsers :many
-SELECT * FROM users ORDER BY created_at DESC;
+SELECT * FROM users ORDER BY created_at DESC LIMIT $1;

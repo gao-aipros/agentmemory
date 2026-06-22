@@ -87,11 +87,16 @@ func (q *Queries) InsertMemory(ctx context.Context, arg InsertMemoryParams) (Mem
 }
 
 const listMemoriesByOwner = `-- name: ListMemoriesByOwner :many
-SELECT id, owner_type, owner_user_id, owner_team_id, visibility, content, concepts, source, confidence, created_at FROM memories WHERE owner_user_id = $1 ORDER BY created_at DESC
+SELECT id, owner_type, owner_user_id, owner_team_id, visibility, content, concepts, source, confidence, created_at FROM memories WHERE owner_user_id = $1 ORDER BY created_at DESC LIMIT $2
 `
 
-func (q *Queries) ListMemoriesByOwner(ctx context.Context, ownerUserID *string) ([]Memory, error) {
-	rows, err := q.db.Query(ctx, listMemoriesByOwner, ownerUserID)
+type ListMemoriesByOwnerParams struct {
+	OwnerUserID *string
+	Limit       int32
+}
+
+func (q *Queries) ListMemoriesByOwner(ctx context.Context, arg ListMemoriesByOwnerParams) ([]Memory, error) {
+	rows, err := q.db.Query(ctx, listMemoriesByOwner, arg.OwnerUserID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}

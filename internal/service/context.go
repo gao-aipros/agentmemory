@@ -147,7 +147,10 @@ func (s *ContextService) gatherLessons(ctx context.Context, userID string) (stri
 		return "", nil
 	}
 
-	lessons, err := s.queries.ListLessonsByTeam(ctx, &team.ID)
+	lessons, err := s.queries.ListLessonsByTeam(ctx, store.ListLessonsByTeamParams{
+		TeamID: &team.ID,
+		Limit:  100,
+	})
 	if err != nil {
 		return "", err
 	}

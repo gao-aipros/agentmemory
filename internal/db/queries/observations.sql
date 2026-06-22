@@ -7,7 +7,7 @@ RETURNING *;
 SELECT * FROM observations WHERE id = $1;
 
 -- name: ListObservationsBySession :many
-SELECT * FROM observations WHERE session_id = $1 ORDER BY timestamp;
+SELECT * FROM observations WHERE session_id = $1 ORDER BY timestamp LIMIT $2;
 
 -- name: DeleteObservation :exec
 DELETE FROM observations WHERE id = $1;
