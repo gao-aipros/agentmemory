@@ -2,11 +2,17 @@ package handler
 
 import (
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync"
+
+	"github.com/go-chi/cors"
+	"golang.org/x/time/rate"
 )
 
 // htmlTagRegex matches HTML tags for basic XSS prevention via input sanitization.
@@ -70,22 +76,86 @@ func stripXSSPatterns(s string) string {
 	return s
 }
 
-// RateLimitMiddleware is a placeholder for future rate limiting.
-// Currently passes through all requests (no-op).
+// RateLimitMiddleware enforces per-IP token bucket rate limiting using
+// golang.org/x/time/rate. Each unique client IP gets its own rate limiter
+// with a token bucket configured via AGENTMEMORY_RATE_LIMIT (default 100 req/s)
+// and a burst size of rate/10 (minimum 5).
 //
-// TODO: Integrate with proper rate limiter (e.g., golang.org/x/time/rate or redis-based)
-//
-// Configuration:
-//
-//	AGENTMEMORY_RATE_LIMIT — requests per second (default: 100)
-//
-// The env var is read but not enforced yet. When implemented, this middleware
-// should return HTTP 429 Too Many Requests when the rate limit is exceeded.
+// When the rate limit is exceeded, the middleware returns HTTP 429 Too Many
+// Requests with a JSON error body and does not call the next handler.
 func RateLimitMiddleware(next http.Handler) http.Handler {
-	if os.Getenv("AGENTMEMORY_RATE_LIMIT") != "" {
-		log.Printf("[WARN] AGENTMEMORY_RATE_LIMIT is set but rate limiting is not yet implemented — all requests pass through")
+	rateLimit := parseRateLimit()
+	log.Printf("[INFO] rate limiting configured: %d req/s (burst %d)", rateLimit, burstSize(rateLimit))
+
+	var (
+		mu    sync.Mutex
+		limiters = make(map[string]*rate.Limiter)
+	)
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := extractIP(r.RemoteAddr)
+
+		mu.Lock()
+		lim, ok := limiters[ip]
+		if !ok {
+			burst := burstSize(rateLimit)
+			lim = rate.NewLimiter(rate.Limit(rateLimit), burst)
+			limiters[ip] = lim
+		}
+		mu.Unlock()
+
+		if !lim.Allow() {
+			writeError(w, http.StatusTooManyRequests, "rate limit exceeded")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// parseRateLimit reads AGENTMEMORY_RATE_LIMIT from the environment, defaulting to 100.
+func parseRateLimit() int {
+	s := os.Getenv("AGENTMEMORY_RATE_LIMIT")
+	if s == "" {
+		return 100
 	}
-	return next
+	n, err := strconv.Atoi(s)
+	if err != nil || n <= 0 {
+		log.Printf("[WARN] AGENTMEMORY_RATE_LIMIT=%q is invalid; using default 100", s)
+		return 100
+	}
+	return n
+}
+
+// burstSize returns the token bucket burst size for a given rate (rate/10, minimum 5).
+func burstSize(rateLimit int) int {
+	b := rateLimit / 10
+	if b < 5 {
+		b = 5
+	}
+	return b
+}
+
+// extractIP strips the port from r.RemoteAddr, returning just the IP.
+func extractIP(addr string) string {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
+	}
+	return host
+}
+
+// CORSMiddleware returns a CORS handler configured with the provided allowed origins.
+// It wraps github.com/go-chi/cors with standard production defaults for methods,
+// headers, credentials, and preflight caching.
+func CORSMiddleware(allowedOrigins []string) func(next http.Handler) http.Handler {
+	corsHandler := cors.Handler(cors.Options{
+		AllowedOrigins:   allowedOrigins,
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Authorization", "Content-Type", "X-Request-ID"},
+		AllowCredentials: true,
+		MaxAge:           86400,
+	})
+	return corsHandler
 }
 
 // SecurityHeadersMiddleware sets security-related HTTP headers on every response
