@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/agentmemory/agentmemory/internal/config"
+	"github.com/agentmemory/agentmemory/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -41,17 +42,23 @@ This is idempotent — safe to run multiple times.`,
 			}
 			defer config.ClosePool(pool)
 
-			// Enable extensions
-			extensions := []string{"pg_search", "vector"}
-			for _, ext := range extensions {
-				sql := fmt.Sprintf("CREATE EXTENSION IF NOT EXISTS %s", ext)
-				if _, err := pool.Exec(ctx, sql); err != nil {
-					slog.Warn("failed to enable extension", "extension", ext, "error", err)
-					fmt.Printf("Warning: could not enable extension %s: %v\n", ext, err)
-				} else {
-					slog.Info("extension enabled", "extension", ext)
-					fmt.Printf("Extension enabled: %s\n", ext)
-				}
+			// Create store queries backed by the pool (sqlc-generated, no raw SQL)
+			queries := store.New(pool)
+
+			// Enable extensions using sqlc-generated queries
+			if err := queries.CreatePgSearchExtension(ctx); err != nil {
+				slog.Warn("failed to enable extension", "extension", "pg_search", "error", err)
+				fmt.Printf("Warning: could not enable extension pg_search: %v\n", err)
+			} else {
+				slog.Info("extension enabled", "extension", "pg_search")
+				fmt.Println("Extension enabled: pg_search")
+			}
+			if err := queries.CreateVectorExtension(ctx); err != nil {
+				slog.Warn("failed to enable extension", "extension", "vector", "error", err)
+				fmt.Printf("Warning: could not enable extension vector: %v\n", err)
+			} else {
+				slog.Info("extension enabled", "extension", "vector")
+				fmt.Println("Extension enabled: vector")
 			}
 
 			// Run migrations
@@ -60,21 +67,11 @@ This is idempotent — safe to run multiple times.`,
 				return fmt.Errorf("migration failed: %w", err)
 			}
 
-			// Verify tables were created by listing them
-			rows, err := pool.Query(ctx,
-				`SELECT table_name FROM information_schema.tables
-				 WHERE table_schema = 'public' ORDER BY table_name`)
+			// Verify tables were created by listing them via sqlc-generated query
+			tables, err := queries.ListPublicTables(ctx)
 			if err != nil {
 				slog.Warn("failed to list tables", "error", err)
 			} else {
-				defer rows.Close()
-				var tables []string
-				for rows.Next() {
-					var name string
-					if err := rows.Scan(&name); err == nil {
-						tables = append(tables, name)
-					}
-				}
 				fmt.Printf("\nSetup complete. Tables created (%d):\n", len(tables))
 				for _, t := range tables {
 					fmt.Printf("  - %s\n", t)

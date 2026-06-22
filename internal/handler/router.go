@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/agentmemory/agentmemory/internal/service"
+	"github.com/agentmemory/agentmemory/internal/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -58,7 +59,7 @@ func NewRouter(pool *pgxpool.Pool) chi.Router {
 		authHandler = NewAuthHandler(userSvc, teamSvc, memberSvc)
 
 		// Health handler with real DB checker
-		healthHandler = NewHealthHandler(&dbHealthChecker{pool: pool})
+		healthHandler = NewHealthHandler(&dbHealthChecker{pool: pool, queries: store.New(pool)})
 
 		// WebSocket handler
 		wsHandler = NewWSHandler(wsHub)
@@ -187,9 +188,10 @@ func NewRouter(pool *pgxpool.Pool) chi.Router {
 	return r
 }
 
-// dbHealthChecker implements HealthChecker using a pgxpool.Pool.
+// dbHealthChecker implements HealthChecker using sqlc-generated store queries.
 type dbHealthChecker struct {
-	pool *pgxpool.Pool
+	pool    *pgxpool.Pool
+	queries *store.Queries
 }
 
 func (c *dbHealthChecker) Ping(ctx context.Context) error {
@@ -197,30 +199,26 @@ func (c *dbHealthChecker) Ping(ctx context.Context) error {
 }
 
 func (c *dbHealthChecker) HasPendingMigrations() (bool, error) {
-	bgCtx := context.Background()
+	ctx := context.Background()
 
 	// Check if the migration version table exists
-	var exists bool
-	err := c.pool.QueryRow(bgCtx,
-		"SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'schema_migrations')",
-	).Scan(&exists)
+	exists, err := c.queries.CheckSchemaMigrationsTableExists(ctx)
 	if err != nil {
 		return false, err
 	}
 	if !exists {
-		// No migrations table — assume migrations haven't been run yet
-		// This is normal for a fresh database that hasn't had setup run
+		// No migrations table — assume migrations haven't been run yet.
+		// This is normal for a fresh database that hasn't had setup run.
 		return false, nil
 	}
 
-	// Check for dirty state in schema_migrations
-	var dirty bool
-	err = c.pool.QueryRow(bgCtx, "SELECT dirty FROM schema_migrations LIMIT 1").Scan(&dirty)
+	// Check for dirty state via sqlc-generated query
+	migration, err := c.queries.GetMigrationVersion(ctx)
 	if err != nil {
-		// Table might exist but be empty (no migrations applied yet)
+		// Table exists but is empty (no migrations applied yet) — this is fine
 		return false, nil
 	}
-	if dirty {
+	if migration.Dirty {
 		// Dirty state is a critical issue, not just pending
 		return true, nil
 	}

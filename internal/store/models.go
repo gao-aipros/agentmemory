@@ -112,6 +112,11 @@ type ObservationEmbedding struct {
 	CreatedAt     pgtype.Timestamptz
 }
 
+type SchemaMigration struct {
+	Version int64
+	Dirty   bool
+}
+
 type Session struct {
 	ID        string
 	UserID    string
