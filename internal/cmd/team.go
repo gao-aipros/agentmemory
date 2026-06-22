@@ -181,14 +181,15 @@ func newTeamListCommand() *cobra.Command {
 
 func newTeamAddCommand() *cobra.Command {
 	var (
-		dbURL  string
-		teamID string
-		userID string
+		dbURL    string
+		teamID   string
+		userID   string
+		callerID string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "add",
-		Short: "Add a member to a team",
+		Short: "Add a member to a team (must be team owner)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if dbURL == "" {
 				dbURL = os.Getenv("DB_URL")
@@ -202,6 +203,9 @@ func newTeamAddCommand() *cobra.Command {
 			if userID == "" {
 				return fmt.Errorf("--user-id is required")
 			}
+			if callerID == "" {
+				return fmt.Errorf("--caller-id is required (must be the team owner)")
+			}
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
@@ -213,7 +217,7 @@ func newTeamAddCommand() *cobra.Command {
 			defer config.ClosePool(pool)
 
 			memberSvc := service.NewTeamMembersService(pool)
-			if err := memberSvc.AddMember(ctx, teamID, userID); err != nil {
+			if err := memberSvc.AddMember(ctx, teamID, userID, callerID); err != nil {
 				return fmt.Errorf("failed to add team member: %w", err)
 			}
 
@@ -225,20 +229,22 @@ func newTeamAddCommand() *cobra.Command {
 	cmd.Flags().StringVar(&dbURL, "db-url", "", "Database URL")
 	cmd.Flags().StringVar(&teamID, "team-id", "", "Team ID")
 	cmd.Flags().StringVar(&userID, "user-id", "", "User ID to add")
+	cmd.Flags().StringVar(&callerID, "caller-id", "", "Caller user ID (must be team owner)")
 
 	return cmd
 }
 
 func newTeamRemoveCommand() *cobra.Command {
 	var (
-		dbURL  string
-		teamID string
-		userID string
+		dbURL    string
+		teamID   string
+		userID   string
+		callerID string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "remove",
-		Short: "Remove a member from a team",
+		Short: "Remove a member from a team (must be team owner)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if dbURL == "" {
 				dbURL = os.Getenv("DB_URL")
@@ -252,6 +258,9 @@ func newTeamRemoveCommand() *cobra.Command {
 			if userID == "" {
 				return fmt.Errorf("--user-id is required")
 			}
+			if callerID == "" {
+				return fmt.Errorf("--caller-id is required (must be the team owner)")
+			}
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
@@ -263,7 +272,7 @@ func newTeamRemoveCommand() *cobra.Command {
 			defer config.ClosePool(pool)
 
 			memberSvc := service.NewTeamMembersService(pool)
-			if err := memberSvc.RemoveMember(ctx, teamID, userID); err != nil {
+			if err := memberSvc.RemoveMember(ctx, teamID, userID, callerID); err != nil {
 				return fmt.Errorf("failed to remove team member: %w", err)
 			}
 
@@ -275,6 +284,7 @@ func newTeamRemoveCommand() *cobra.Command {
 	cmd.Flags().StringVar(&dbURL, "db-url", "", "Database URL")
 	cmd.Flags().StringVar(&teamID, "team-id", "", "Team ID")
 	cmd.Flags().StringVar(&userID, "user-id", "", "User ID to remove")
+	cmd.Flags().StringVar(&callerID, "caller-id", "", "Caller user ID (must be team owner)")
 
 	return cmd
 }

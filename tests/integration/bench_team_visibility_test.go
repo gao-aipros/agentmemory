@@ -68,10 +68,10 @@ func TestBenchTeamVisibilityPropagation(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = memberSvc.AddMember(ctx, team.ID, member1ID)
+	err = memberSvc.AddMember(ctx, team.ID, member1ID, ownerID)
 	require.NoError(t, err)
 
-	err = memberSvc.AddMember(ctx, team.ID, member2ID)
+	err = memberSvc.AddMember(ctx, team.ID, member2ID, ownerID)
 	require.NoError(t, err)
 
 	addMembersTime := time.Since(stepStart)
@@ -79,7 +79,7 @@ func TestBenchTeamVisibilityPropagation(t *testing.T) {
 
 	// Step 3: Verify membership propagation
 	stepStart = time.Now()
-	members, err := memberSvc.ListMembers(ctx, team.ID)
+	members, err := memberSvc.ListMembers(ctx, team.ID, ownerID)
 	require.NoError(t, err)
 	assert.Len(t, members, 3, "all 3 members should be visible")
 
@@ -151,7 +151,7 @@ func TestBenchTeamOpsLatency(t *testing.T) {
 
 	// Benchmark add member
 	addStart := time.Now()
-	err = memberSvc.AddMember(ctx, team.ID, memberID)
+	err = memberSvc.AddMember(ctx, team.ID, memberID, ownerID)
 	require.NoError(t, err)
 	addTime := time.Since(addStart)
 	t.Logf("Add member: %v", addTime)
@@ -159,7 +159,7 @@ func TestBenchTeamOpsLatency(t *testing.T) {
 
 	// Benchmark list members
 	listStart := time.Now()
-	members, err := memberSvc.ListMembers(ctx, team.ID)
+	members, err := memberSvc.ListMembers(ctx, team.ID, ownerID)
 	require.NoError(t, err)
 	listTime := time.Since(listStart)
 	t.Logf("List members (%d): %v", len(members), listTime)
@@ -168,14 +168,14 @@ func TestBenchTeamOpsLatency(t *testing.T) {
 
 	// Benchmark remove member
 	removeStart := time.Now()
-	err = memberSvc.RemoveMember(ctx, team.ID, memberID)
+	err = memberSvc.RemoveMember(ctx, team.ID, memberID, ownerID)
 	require.NoError(t, err)
 	removeTime := time.Since(removeStart)
 	t.Logf("Remove member: %v", removeTime)
 	assert.Less(t, removeTime, 5*time.Second, "remove member should be <5s")
 
 	// Verify member removed
-	membersAfter, err := memberSvc.ListMembers(ctx, team.ID)
+	membersAfter, err := memberSvc.ListMembers(ctx, team.ID, ownerID)
 	require.NoError(t, err)
 	assert.Len(t, membersAfter, 1, "only owner should remain")
 
@@ -230,23 +230,23 @@ func TestBenchTeamVisibilityRejoin(t *testing.T) {
 	require.NoError(t, err)
 
 	// Member joins
-	err = memberSvc.AddMember(ctx, team.ID, memberID)
+	err = memberSvc.AddMember(ctx, team.ID, memberID, ownerID)
 	require.NoError(t, err)
 
 	// Member leaves
-	err = memberSvc.RemoveMember(ctx, team.ID, memberID)
+	err = memberSvc.RemoveMember(ctx, team.ID, memberID, ownerID)
 	require.NoError(t, err)
 
 	// Measure rejoin time
 	rejoinStart := time.Now()
-	err = memberSvc.AddMember(ctx, team.ID, memberID)
+	err = memberSvc.AddMember(ctx, team.ID, memberID, ownerID)
 	require.NoError(t, err)
 	rejoinTime := time.Since(rejoinStart)
 	t.Logf("Rejoin time: %v", rejoinTime)
 	assert.Less(t, rejoinTime, 5*time.Second, "rejoin should be <5s")
 
 	// Verify visibility after rejoin
-	members, err := memberSvc.ListMembers(ctx, team.ID)
+	members, err := memberSvc.ListMembers(ctx, team.ID, ownerID)
 	require.NoError(t, err)
 	assert.Len(t, members, 2, "owner and rejoined member should be visible")
 }

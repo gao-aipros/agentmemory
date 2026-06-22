@@ -9,9 +9,20 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// teamMembersQuerier is the subset of *store.Queries methods used by TeamMembersService.
+// The concrete *store.Queries satisfies this interface, enabling mock-based unit testing.
+type teamMembersQuerier interface {
+	GetTeam(ctx context.Context, id string) (store.Team, error)
+	GetUserByID(ctx context.Context, id string) (store.User, error)
+	GetUserTeam(ctx context.Context, userID string) (store.Team, error)
+	AddTeamMember(ctx context.Context, params store.AddTeamMemberParams) (store.TeamMember, error)
+	ListTeamMembers(ctx context.Context, teamID string) ([]store.TeamMember, error)
+	RemoveTeamMember(ctx context.Context, params store.RemoveTeamMemberParams) error
+}
+
 // TeamMembersService manages team membership — adding, removing, and listing members.
 type TeamMembersService struct {
-	queries *store.Queries
+	queries teamMembersQuerier
 }
 
 // NewTeamMembersService creates a new TeamMembersService backed by the given connection pool.
@@ -21,12 +32,23 @@ func NewTeamMembersService(pool *pgxpool.Pool) *TeamMembersService {
 	}
 }
 
-// AddMember adds a user to a team. A user can only be in one team at a time (one-to-many).
-func (s *TeamMembersService) AddMember(ctx context.Context, teamID, userID string) error {
+// newTeamMembersServiceWithQuerier creates a TeamMembersService with a custom querier (for testing).
+func newTeamMembersServiceWithQuerier(q teamMembersQuerier) *TeamMembersService {
+	return &TeamMembersService{queries: q}
+}
+
+// AddMember adds a user to a team. Only the team owner may add members.
+// A user can only be in one team at a time (one-to-many).
+func (s *TeamMembersService) AddMember(ctx context.Context, teamID, userID, callerID string) error {
 	// Check that the team exists
-	_, err := s.queries.GetTeam(ctx, teamID)
+	team, err := s.queries.GetTeam(ctx, teamID)
 	if err != nil {
 		return fmt.Errorf("team not found: %w", err)
+	}
+
+	// Verify caller is the team owner
+	if team.OwnerID != callerID {
+		return fmt.Errorf("only the team owner can add members")
 	}
 
 	// Check that the user exists
@@ -56,8 +78,19 @@ func (s *TeamMembersService) AddMember(ctx context.Context, teamID, userID strin
 	return nil
 }
 
-// RemoveMember removes a user from a team. Uses exit/re-join pattern: DELETE row, no soft-delete.
-func (s *TeamMembersService) RemoveMember(ctx context.Context, teamID, userID string) error {
+// RemoveMember removes a user from a team. Only the team owner may remove members.
+// Uses exit/re-join pattern: DELETE row, no soft-delete.
+func (s *TeamMembersService) RemoveMember(ctx context.Context, teamID, userID, callerID string) error {
+	// Check that the team exists and caller is the owner
+	team, err := s.queries.GetTeam(ctx, teamID)
+	if err != nil {
+		return fmt.Errorf("team not found: %w", err)
+	}
+
+	if team.OwnerID != callerID {
+		return fmt.Errorf("only the team owner can remove members")
+	}
+
 	// Verify the membership exists
 	members, err := s.queries.ListTeamMembers(ctx, teamID)
 	if err != nil {
@@ -82,8 +115,22 @@ func (s *TeamMembersService) RemoveMember(ctx context.Context, teamID, userID st
 	return nil
 }
 
-// ListMembers lists all members of a team.
-func (s *TeamMembersService) ListMembers(ctx context.Context, teamID string) ([]store.TeamMember, error) {
+// ListMembers lists all members of a team. The caller must be the team owner or a team member.
+func (s *TeamMembersService) ListMembers(ctx context.Context, teamID, callerID string) ([]store.TeamMember, error) {
+	// Check that the team exists
+	team, err := s.queries.GetTeam(ctx, teamID)
+	if err != nil {
+		return nil, fmt.Errorf("team not found: %w", err)
+	}
+
+	// Verify caller is owner or member
+	if team.OwnerID != callerID {
+		userTeam, err := s.queries.GetUserTeam(ctx, callerID)
+		if err != nil || userTeam.ID != teamID {
+			return nil, fmt.Errorf("only team owner or members can list team members")
+		}
+	}
+
 	members, err := s.queries.ListTeamMembers(ctx, teamID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list team members: %w", err)

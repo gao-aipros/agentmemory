@@ -786,21 +786,19 @@ func registerMemoryLessonRecall(mcpServer *mcp.Server, svc *ServiceBundle) {
 func registerTeamCreate(mcpServer *mcp.Server, svc *ServiceBundle) {
 	type args struct {
 		Name              string `json:"name"`
-		OwnerID           string `json:"owner_id"`
 		DefaultVisibility string `json:"default_visibility,omitempty"`
 	}
 
 	mcpServer.AddTool(&mcp.Tool{
 		Name:        "team_create",
-		Description: "Create a new team with the given name, owner, and default visibility.",
+		Description: "Create a new team with the given name and default visibility. The authenticated user becomes the team owner.",
 		InputSchema: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"name":               stringProp("Team name"),
-				"owner_id":           stringProp("Owner user ID"),
 				"default_visibility": optStringProp("Default visibility: member_choice (default), team, or public"),
 			},
-			"required": []string{"name", "owner_id"},
+			"required": []string{"name"},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		var a args
@@ -808,7 +806,17 @@ func registerTeamCreate(mcpServer *mcp.Server, svc *ServiceBundle) {
 			return nil, err
 		}
 
-		team, err := svc.Team.CreateTeam(ctx, a.Name, a.OwnerID, a.DefaultVisibility)
+		ownerID := auth.GetUserIDFromContext(ctx)
+		if ownerID == "" {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: "authentication required: no user ID in context"},
+				},
+			}, nil
+		}
+
+		team, err := svc.Team.CreateTeam(ctx, a.Name, ownerID, a.DefaultVisibility)
 		if err != nil {
 			return &mcp.CallToolResult{
 				IsError: true,
@@ -828,8 +836,7 @@ func registerTeamCreate(mcpServer *mcp.Server, svc *ServiceBundle) {
 
 func registerTeamDelete(mcpServer *mcp.Server, svc *ServiceBundle) {
 	type args struct {
-		TeamID  string `json:"team_id"`
-		OwnerID string `json:"owner_id"`
+		TeamID string `json:"team_id"`
 	}
 
 	mcpServer.AddTool(&mcp.Tool{
@@ -838,10 +845,9 @@ func registerTeamDelete(mcpServer *mcp.Server, svc *ServiceBundle) {
 		InputSchema: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"team_id":  stringProp("Team ID to delete"),
-				"owner_id": stringProp("Owner user ID (ownership verified)"),
+				"team_id": stringProp("Team ID to delete"),
 			},
-			"required": []string{"team_id", "owner_id"},
+			"required": []string{"team_id"},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		var a args
@@ -849,7 +855,17 @@ func registerTeamDelete(mcpServer *mcp.Server, svc *ServiceBundle) {
 			return nil, err
 		}
 
-		if err := svc.Team.DeleteTeam(ctx, a.TeamID, a.OwnerID); err != nil {
+		ownerID := auth.GetUserIDFromContext(ctx)
+		if ownerID == "" {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: "authentication required: no user ID in context"},
+				},
+			}, nil
+		}
+
+		if err := svc.Team.DeleteTeam(ctx, a.TeamID, ownerID); err != nil {
 			return &mcp.CallToolResult{
 				IsError: true,
 				Content: []mcp.Content{
@@ -888,7 +904,17 @@ func registerTeamAddMember(mcpServer *mcp.Server, svc *ServiceBundle) {
 			return nil, err
 		}
 
-		if err := svc.Members.AddMember(ctx, a.TeamID, a.UserID); err != nil {
+		callerID := auth.GetUserIDFromContext(ctx)
+		if callerID == "" {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: "authentication required: no user ID in context"},
+				},
+			}, nil
+		}
+
+		if err := svc.Members.AddMember(ctx, a.TeamID, a.UserID, callerID); err != nil {
 			return &mcp.CallToolResult{
 				IsError: true,
 				Content: []mcp.Content{
@@ -928,7 +954,17 @@ func registerTeamRemoveMember(mcpServer *mcp.Server, svc *ServiceBundle) {
 			return nil, err
 		}
 
-		if err := svc.Members.RemoveMember(ctx, a.TeamID, a.UserID); err != nil {
+		callerID := auth.GetUserIDFromContext(ctx)
+		if callerID == "" {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: "authentication required: no user ID in context"},
+				},
+			}, nil
+		}
+
+		if err := svc.Members.RemoveMember(ctx, a.TeamID, a.UserID, callerID); err != nil {
 			return &mcp.CallToolResult{
 				IsError: true,
 				Content: []mcp.Content{
@@ -966,7 +1002,17 @@ func registerTeamListMembers(mcpServer *mcp.Server, svc *ServiceBundle) {
 			return nil, err
 		}
 
-		members, err := svc.Members.ListMembers(ctx, a.TeamID)
+		callerID := auth.GetUserIDFromContext(ctx)
+		if callerID == "" {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: "authentication required: no user ID in context"},
+				},
+			}, nil
+		}
+
+		members, err := svc.Members.ListMembers(ctx, a.TeamID, callerID)
 		if err != nil {
 			return &mcp.CallToolResult{
 				IsError: true,
