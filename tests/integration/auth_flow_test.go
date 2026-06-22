@@ -72,7 +72,7 @@ func TestAuthFlow_UserCreation(t *testing.T) {
 	assert.Error(t, err, "duplicate email should be rejected by UNIQUE constraint")
 
 	// Verify listing users includes the new user
-	users, err := queries.ListUsers(ctx)
+	users, err := queries.ListUsers(ctx, 50)
 	require.NoError(t, err)
 	assert.Len(t, users, 1)
 	assert.Equal(t, userID, users[0].ID)
@@ -413,4 +413,29 @@ func TestListAPIKeysByUser_Limit(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Len(t, keys, 3, "should return exactly 3 keys with limit=3")
+}
+
+// TestListUsers_Limit verifies that ListUsers respects its LIMIT parameter
+// and does not return unbounded results (#57).
+func TestListUsers_Limit(t *testing.T) {
+	db := SetupTestDB(t)
+	defer TeardownTestDB(t, db)
+
+	ctx := context.Background()
+	runMigrations(t, db)
+
+	// Insert 5 users directly
+	for i := 0; i < 5; i++ {
+		email := fmt.Sprintf("limit-user-%d@example.com", i)
+		_, err := db.Pool.Exec(ctx, `INSERT INTO users (id, email, password_hash, name) VALUES ($1, $2, $3, $4)`,
+			uuid.New().String(), email, "hash", fmt.Sprintf("User %d", i))
+		require.NoError(t, err)
+	}
+
+	queries := store.New(db.Pool)
+
+	// Query with limit=3 — should return exactly 3
+	users, err := queries.ListUsers(ctx, 3)
+	require.NoError(t, err)
+	assert.Len(t, users, 3, "should return exactly 3 users with limit=3")
 }
