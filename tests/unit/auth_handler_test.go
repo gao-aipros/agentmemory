@@ -131,7 +131,8 @@ func TestHandleRegister_ValidationErrors(t *testing.T) {
 // other creation errors must return the same generic message and status.
 //
 // The key behavioral contract is:
-//   CreateUser error -> HTTP 409 + {"error": "registration failed"}
+//
+//	CreateUser error -> HTTP 409 + {"error": "registration failed"}
 func TestHandleRegister_ServiceErrorsAreGeneric(t *testing.T) {
 	cfg := &config.Config{
 		JWTSecret: "test-secret-for-registration",

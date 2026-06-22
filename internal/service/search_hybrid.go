@@ -14,7 +14,7 @@ import (
 
 // SearchService provides hybrid search (BM25 + vector) over observations.
 type SearchService struct {
-	queries *store.Queries
+	queries  *store.Queries
 	embedSvc *EmbeddingService
 }
 

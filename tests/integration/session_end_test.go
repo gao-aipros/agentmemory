@@ -16,7 +16,7 @@ import (
 // the summarize → consolidate pipeline and creates session_summaries,
 // memories, and lessons.
 func TestSessionEndTriggersPipeline(t *testing.T) {
-// Parallel removed — shared container requires sequential execution
+	// Parallel removed — shared container requires sequential execution
 
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)
@@ -37,7 +37,7 @@ func TestSessionEndTriggersPipeline(t *testing.T) {
 
 	// Record some observations first
 	llmSvc := NewMockLLMService()
-	embedSvc := service.NewEmbeddingServiceWithEmbedder(db.Pool, nil)
+	embedSvc := service.NewEmbeddingServiceWithEmbedder(nil)
 	compressor := service.NewCompressionService(db.Pool, llmSvc, embedSvc)
 	obsSvc := service.NewObservationService(db.Pool, compressor)
 
@@ -109,7 +109,7 @@ func TestSessionEndTriggersPipeline(t *testing.T) {
 // TestSessionEndRequiresObservations tests that ending a session with no
 // observations completes gracefully.
 func TestSessionEndNoObservations(t *testing.T) {
-// Parallel removed — shared container requires sequential execution
+	// Parallel removed — shared container requires sequential execution
 
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)

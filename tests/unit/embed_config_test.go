@@ -17,7 +17,7 @@ func TestNewEmbeddingService_EmbeddingAPIKey_Used(t *testing.T) {
 	os.Setenv("EMBEDDING_API_KEY", "my-embed-key")
 	// LLM_API_KEY and OPENAI_API_KEY are NOT set — EMBEDDING_API_KEY should be used
 
-	svc, err := service.NewEmbeddingService(nil)
+	svc, err := service.NewEmbeddingService()
 	require.NoError(t, err)
 	require.NotNil(t, svc)
 	assert.NotNil(t, svc.Embedder(), "Embedding embedder should not be nil")
@@ -32,7 +32,7 @@ func TestNewEmbeddingService_EmbeddingAPIKey_FallbackToLLMAPIKey(t *testing.T) {
 	os.Setenv("LLM_API_KEY", "llm-fallback-key")
 	// OPENAI_API_KEY is NOT set either
 
-	svc, err := service.NewEmbeddingService(nil)
+	svc, err := service.NewEmbeddingService()
 	require.NoError(t, err)
 	require.NotNil(t, svc)
 	assert.NotNil(t, svc.Embedder(), "Embedding embedder should not be nil")
@@ -47,7 +47,7 @@ func TestNewEmbeddingService_EmbeddingAPIKey_FallbackToOpenAI(t *testing.T) {
 	// EMBEDDING_API_KEY and LLM_API_KEY are intentionally not set
 	os.Setenv("OPENAI_API_KEY", "openai-fallback-key")
 
-	svc, err := service.NewEmbeddingService(nil)
+	svc, err := service.NewEmbeddingService()
 	require.NoError(t, err)
 	require.NotNil(t, svc)
 	assert.NotNil(t, svc.Embedder(), "Embedding embedder should not be nil")
@@ -60,7 +60,7 @@ func TestNewEmbeddingService_NoKey_Error(t *testing.T) {
 
 	// None of EMBEDDING_API_KEY, LLM_API_KEY, or OPENAI_API_KEY is set
 
-	svc, err := service.NewEmbeddingService(nil)
+	svc, err := service.NewEmbeddingService()
 	assert.Error(t, err, "missing all API keys should return an error")
 	assert.Nil(t, svc, "service should be nil when API key is missing")
 }
@@ -74,7 +74,7 @@ func TestNewEmbeddingService_EmbeddingBaseURL_Set(t *testing.T) {
 	os.Setenv("EMBEDDING_API_KEY", "test-key-for-unit-test")
 	os.Setenv("EMBEDDING_BASE_URL", "https://custom-openai.example.com/v1")
 
-	svc, err := service.NewEmbeddingService(nil)
+	svc, err := service.NewEmbeddingService()
 	require.NoError(t, err)
 	require.NotNil(t, svc)
 	assert.NotNil(t, svc.Embedder(), "Embedding embedder should not be nil")
@@ -88,7 +88,7 @@ func TestNewEmbeddingService_EmbeddingBaseURL_Empty(t *testing.T) {
 	os.Setenv("EMBEDDING_API_KEY", "test-key-for-unit-test")
 	// EMBEDDING_BASE_URL is intentionally not set
 
-	svc, err := service.NewEmbeddingService(nil)
+	svc, err := service.NewEmbeddingService()
 	require.NoError(t, err)
 	require.NotNil(t, svc)
 	assert.NotNil(t, svc.Embedder(), "Embedding embedder should not be nil")

@@ -309,7 +309,7 @@ func TestBenchMCPAuthToolStubLatency(t *testing.T) {
 			"operation": "acquire",
 		}},
 		{"memory_routine_run", map[string]interface{}{
-			"routine_id":  "test-routine",
+			"routine_id":   "test-routine",
 			"initiated_by": "test-agent",
 		}},
 		{"memory_sketch_promote", map[string]interface{}{

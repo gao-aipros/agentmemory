@@ -12,6 +12,7 @@ import (
 	"github.com/agentmemory/agentmemory/internal/store"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pgvector/pgvector-go"
 )
 
 // CompressionService picks up raw observations and compresses them into
@@ -99,7 +100,12 @@ func (s *CompressionService) compress(ctx context.Context, obs *store.Observatio
 			)
 			// Non-fatal — we still have the compressed text
 		} else {
-			if err := s.embedSvc.StoreCompressedEmbedding(ctx, compressedID, embedding, "default"); err != nil {
+			vec := pgvector.NewVector(embedding)
+			if err := s.queries.InsertCompressedEmbedding(ctx, store.InsertCompressedEmbeddingParams{
+				CompressedID: compressedID,
+				Embedding:    &vec,
+				Model:        "default",
+			}); err != nil {
 				slog.Warn("failed to store compressed embedding",
 					"compressed_id", compressedID,
 					"error", err,

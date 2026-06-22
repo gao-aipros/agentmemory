@@ -55,7 +55,10 @@ func TestBenchSearch(t *testing.T) {
 		results, err := searchSvc.HybridSearch(ctx, query, 10, "bench-user-001")
 		elapsed := time.Since(start)
 
-		if err != nil { t.Skipf("skipping benchmark at iteration %d: %v", i, err); return }
+		if err != nil {
+			t.Skipf("skipping benchmark at iteration %d: %v", i, err)
+			return
+		}
 		assert.NotNil(t, results, "search should return results on iteration %d", i)
 
 		latencies = append(latencies, elapsed)

@@ -16,7 +16,7 @@ import (
 // TestAuthFlow_UserCreation tests creating a user through the store layer,
 // then retrieving it by ID and by email to confirm it was persisted correctly.
 func TestAuthFlow_UserCreation(t *testing.T) {
-// Parallel removed — shared container requires sequential execution
+	// Parallel removed — shared container requires sequential execution
 
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)
@@ -84,7 +84,7 @@ func TestAuthFlow_UserCreation(t *testing.T) {
 //  3. Wrong passwords fail verification.
 //  4. Empty password is handled correctly.
 func TestAuthFlow_PasswordHashing(t *testing.T) {
-// Parallel removed — shared container requires sequential execution
+	// Parallel removed — shared container requires sequential execution
 
 	password := "correct-horse-battery-staple"
 	wrongPassword := "incorrect-donkey-aaa-rechargeable"
@@ -123,7 +123,7 @@ func TestAuthFlow_PasswordHashing(t *testing.T) {
 //  5. Detecting expired tokens.
 //  6. Rejecting tokens missing the "st_" prefix.
 func TestAuthFlow_JWTGeneration(t *testing.T) {
-// Parallel removed — shared container requires sequential execution
+	// Parallel removed — shared container requires sequential execution
 
 	secret := "test-jwt-secret-64-chars-long-for-hs256-minimum-requirement"
 	userID := uuid.New().String()
@@ -173,7 +173,7 @@ func TestAuthFlow_JWTGeneration(t *testing.T) {
 // TestAuthFlow_APIKeyCreation tests the full API key lifecycle:
 // generation, storage, lookup by hash, and last_used_at update.
 func TestAuthFlow_APIKeyCreation(t *testing.T) {
-// Parallel removed — shared container requires sequential execution
+	// Parallel removed — shared container requires sequential execution
 
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)
@@ -260,7 +260,7 @@ func TestAuthFlow_APIKeyCreation(t *testing.T) {
 // flow: create user -> password verification -> JWT generation -> API key creation
 // -> API key usage simulation.
 func TestAuthFlow_FullFlow(t *testing.T) {
-// Parallel removed — shared container requires sequential execution
+	// Parallel removed — shared container requires sequential execution
 
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)

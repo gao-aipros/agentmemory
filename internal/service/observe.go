@@ -19,17 +19,17 @@ type ObservationService struct {
 
 // RecordObservationInput is the input for recording a new observation.
 type RecordObservationInput struct {
-	SessionID    string
-	OwnerType    string
-	OwnerUserID  string
-	OwnerTeamID  string
-	Type         string
-	Title        string
-	Narrative    string
-	Facts        string
-	Concepts     []string
-	Files        []string
-	Importance   *float64
+	SessionID   string
+	OwnerType   string
+	OwnerUserID string
+	OwnerTeamID string
+	Type        string
+	Title       string
+	Narrative   string
+	Facts       string
+	Concepts    []string
+	Files       []string
+	Importance  *float64
 }
 
 // NewObservationService creates a new ObservationService.

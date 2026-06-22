@@ -12,10 +12,10 @@ import (
 // 3. After summarize: trigger consolidate (async)
 // 4. After consolidate: trigger reflect timer check
 type SessionEndHandler struct {
-	sessionSvc    *SessionService
-	summarizer    *SummarizationService
-	consolidator  *ConsolidationService
-	reflector     *ReflectionService
+	sessionSvc   *SessionService
+	summarizer   *SummarizationService
+	consolidator *ConsolidationService
+	reflector    *ReflectionService
 }
 
 // NewSessionEndHandler creates a new SessionEndHandler.

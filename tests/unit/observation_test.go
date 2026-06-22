@@ -25,7 +25,7 @@ func TestValidateHookType_InvalidTypeRejected(t *testing.T) {
 		"invalid_type",
 		"SESSION_START", // case-sensitive
 		"random_event",
-		"tool_use", // missing pre_ or post_ prefix
+		"tool_use",             // missing pre_ or post_ prefix
 		"pre_tool_use_success", // not in the 13
 	}
 

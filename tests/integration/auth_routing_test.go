@@ -104,11 +104,11 @@ func TestAuthRouting_PublicRoutesNoAuth(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
 			body := bytes.NewBufferString(``)
-		if tc.method == "POST" {
-			body = bytes.NewBufferString(`{}`)
-		}
+			if tc.method == "POST" {
+				body = bytes.NewBufferString(`{}`)
+			}
 
-		req := httptest.NewRequest(tc.method, tc.path, body)
+			req := httptest.NewRequest(tc.method, tc.path, body)
 			if tc.method == "POST" {
 				req.Header.Set("Content-Type", "application/json")
 			}

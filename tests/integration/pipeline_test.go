@@ -15,7 +15,7 @@ import (
 // TestPipelineObserveToCompressed tests the full pipeline: observe → compress → searchable.
 // Uses testcontainers ParadeDB with a mock LLM provider.
 func TestPipelineObserveToCompressed(t *testing.T) {
-// Parallel removed — shared container requires sequential execution
+	// Parallel removed — shared container requires sequential execution
 
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)
@@ -39,7 +39,7 @@ func TestPipelineObserveToCompressed(t *testing.T) {
 
 	// Set up services with mock LLM
 	llmSvc := NewMockLLMService()
-	embedSvc := service.NewEmbeddingServiceWithEmbedder(db.Pool, nil) // No embed provider for test
+	embedSvc := service.NewEmbeddingServiceWithEmbedder(nil) // No embed provider for test
 	compressor := service.NewCompressionService(db.Pool, llmSvc, embedSvc)
 	obsSvc := service.NewObservationService(db.Pool, compressor)
 
@@ -89,7 +89,7 @@ func TestPipelineObserveToCompressed(t *testing.T) {
 
 // TestPipelineObserveTypeValidation tests that invalid hook types are rejected.
 func TestPipelineObserveTypeValidation(t *testing.T) {
-// Parallel removed — shared container requires sequential execution
+	// Parallel removed — shared container requires sequential execution
 
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)
@@ -124,7 +124,7 @@ func TestPipelineObserveTypeValidation(t *testing.T) {
 
 // TestPipelineImportanceValidation tests that importance outside [0.0, 1.0] is rejected.
 func TestPipelineImportanceValidation(t *testing.T) {
-// Parallel removed — shared container requires sequential execution
+	// Parallel removed — shared container requires sequential execution
 
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)

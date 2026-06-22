@@ -28,8 +28,8 @@ const (
 
 // Observer represents an entity trying to access a resource.
 type Observer struct {
-	UserID   string  // non-empty if authenticated
-	TeamIDs  []string // teams the observer belongs to
+	UserID  string   // non-empty if authenticated
+	TeamIDs []string // teams the observer belongs to
 }
 
 // ResourceOwner represents who owns a resource.

@@ -215,6 +215,7 @@ func SeedTestGraph(pool *pgxpool.Pool) error {
 
 	return nil
 }
+
 // All migration SQL is now read from the actual migration files on disk
 // via RunAllMigrations() in helpers_test.go — no more embedded duplication.
 const migration001 = `

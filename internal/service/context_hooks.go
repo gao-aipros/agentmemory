@@ -29,8 +29,8 @@ type ContextHookResult struct {
 // ContextHookManager manages the 3 context injection triggers:
 // SessionStart, PreToolUse, and PreCompact.
 type ContextHookManager struct {
-	ctxSvc  *ContextService
-	gate    *ContextGate
+	ctxSvc *ContextService
+	gate   *ContextGate
 }
 
 // NewContextHookManager creates a new ContextHookManager.
