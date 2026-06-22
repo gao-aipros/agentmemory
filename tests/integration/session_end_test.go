@@ -146,6 +146,40 @@ func TestSessionEndNoObservations(t *testing.T) {
 	assert.Equal(t, "ended", session.Status)
 }
 
+// TestListSessionsByUser_Limit verifies that ListSessionsByUser respects
+// its LIMIT parameter and does not return unbounded results (#51).
+func TestListSessionsByUser_Limit(t *testing.T) {
+	db := SetupTestDB(t)
+	defer TeardownTestDB(t, db)
+
+	ctx := context.Background()
+	runMigrations(t, db)
+
+	userID := uuid.New().String()
+	_, err := db.Pool.Exec(ctx, `INSERT INTO users (id, email, password_hash, name) VALUES ($1, $2, $3, $4)`,
+		userID, "limit-sessions@example.com", "hash", "Limit Sessions User")
+	require.NoError(t, err)
+
+	queries := store.New(db.Pool)
+
+	// Insert 5 sessions
+	for i := 0; i < 5; i++ {
+		_, err := queries.CreateSession(ctx, store.CreateSessionParams{
+			ID:     uuid.New().String(),
+			UserID: userID,
+		})
+		require.NoError(t, err)
+	}
+
+	// Query with limit=3 — should return exactly 3
+	sessions, err := queries.ListSessionsByUser(ctx, store.ListSessionsByUserParams{
+		UserID: userID,
+		Limit:  3,
+	})
+	require.NoError(t, err)
+	assert.Len(t, sessions, 3)
+}
+
 func formatTestInt(n int) string {
 	if n == 0 {
 		return "0"
