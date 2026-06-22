@@ -14,6 +14,8 @@ func clearLLMEnv() {
 	os.Unsetenv("LLM_MODEL")
 	os.Unsetenv("OPENAI_API_KEY")
 	os.Unsetenv("ANTHROPIC_API_KEY")
+	os.Unsetenv("LLM_API_KEY")
+	os.Unsetenv("LLM_BASE_URL")
 }
 
 // TestNewLLMService_OpenAI verifies that NewLLMService creates an OpenAI model

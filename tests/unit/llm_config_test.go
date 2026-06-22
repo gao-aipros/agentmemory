@@ -9,18 +9,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// extraLLMEnvCleanup clears the unified key/base URL env vars that the original
-// clearLLMEnv() doesn't know about. Must be called after clearLLMEnv().
-func extraLLMEnvCleanup() {
-	os.Unsetenv("LLM_API_KEY")
-	os.Unsetenv("LLM_BASE_URL")
-}
 
 // TestNewLLMService_LLMAPIKey_Used verifies that LLM_API_KEY alone
 // (without provider-specific env vars) works for the openai provider.
 func TestNewLLMService_LLMAPIKey_Used(t *testing.T) {
 	clearLLMEnv()
-	extraLLMEnvCleanup()
+
 	os.Setenv("LLM_API_KEY", "my-unified-key")
 	os.Setenv("LLM_PROVIDER", "openai")
 	// OPENAI_API_KEY is NOT set — LLM_API_KEY should be used
@@ -35,7 +29,7 @@ func TestNewLLMService_LLMAPIKey_Used(t *testing.T) {
 // is empty but OPENAI_API_KEY is set, the fallback works for openai provider.
 func TestNewLLMService_LLMAPIKey_FallbackToOpenAI(t *testing.T) {
 	clearLLMEnv()
-	extraLLMEnvCleanup()
+
 	// LLM_API_KEY is intentionally not set
 	os.Setenv("OPENAI_API_KEY", "openai-fallback-key")
 	os.Setenv("LLM_PROVIDER", "openai")
@@ -50,7 +44,7 @@ func TestNewLLMService_LLMAPIKey_FallbackToOpenAI(t *testing.T) {
 // is empty but ANTHROPIC_API_KEY is set, the fallback works for anthropic provider.
 func TestNewLLMService_LLMAPIKey_FallbackToAnthropic(t *testing.T) {
 	clearLLMEnv()
-	extraLLMEnvCleanup()
+
 	// LLM_API_KEY is intentionally not set
 	os.Setenv("ANTHROPIC_API_KEY", "anthropic-fallback-key")
 	os.Setenv("LLM_PROVIDER", "anthropic")
@@ -67,7 +61,7 @@ func TestNewLLMService_LLMAPIKey_FallbackToAnthropic(t *testing.T) {
 // is created successfully, proving no conflict).
 func TestNewLLMService_LLMAPIKey_PriorityOverProviderKey(t *testing.T) {
 	clearLLMEnv()
-	extraLLMEnvCleanup()
+
 	os.Setenv("LLM_API_KEY", "primary-key")
 	os.Setenv("OPENAI_API_KEY", "secondary-key")
 	os.Setenv("LLM_PROVIDER", "openai")
@@ -82,7 +76,7 @@ func TestNewLLMService_LLMAPIKey_PriorityOverProviderKey(t *testing.T) {
 // provider-specific keys are empty, the service returns an error.
 func TestNewLLMService_LLMAPIKey_Empty(t *testing.T) {
 	clearLLMEnv()
-	extraLLMEnvCleanup()
+
 	// Neither LLM_API_KEY nor OPENAI_API_KEY is set
 	os.Setenv("LLM_PROVIDER", "openai")
 
@@ -95,7 +89,7 @@ func TestNewLLMService_LLMAPIKey_Empty(t *testing.T) {
 // successfully when LLM_BASE_URL is set (proving it doesn't break creation).
 func TestNewLLMService_LLMBaseURL_Set(t *testing.T) {
 	clearLLMEnv()
-	extraLLMEnvCleanup()
+
 	os.Setenv("OPENAI_API_KEY", "test-key-for-unit-test")
 	os.Setenv("LLM_BASE_URL", "https://custom-openai.example.com/v1")
 	os.Setenv("LLM_PROVIDER", "openai")
@@ -110,7 +104,7 @@ func TestNewLLMService_LLMBaseURL_Set(t *testing.T) {
 // set, the service is still created successfully.
 func TestNewLLMService_LLMBaseURL_Empty(t *testing.T) {
 	clearLLMEnv()
-	extraLLMEnvCleanup()
+
 	os.Setenv("OPENAI_API_KEY", "test-key-for-unit-test")
 	os.Setenv("LLM_PROVIDER", "openai")
 	// LLM_BASE_URL is intentionally not set
