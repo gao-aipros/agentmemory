@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/agentmemory/agentmemory/internal/config"
 	"github.com/agentmemory/agentmemory/internal/mcp"
 	"github.com/agentmemory/agentmemory/internal/store"
 	"github.com/go-chi/chi/v5"
@@ -16,7 +17,7 @@ import (
 // NewRouter creates and configures the chi HTTP router with middleware and route groups.
 // bundle is the shared ServiceBundle created once at startup by cmd/serve.
 // If bundle or bundle.Pool is nil, the router is created without database-backed handlers.
-func NewRouter(bundle *mcp.ServiceBundle) chi.Router {
+func NewRouter(bundle *mcp.ServiceBundle, cfg *config.Config) chi.Router {
 	// Create service dependencies from the shared bundle
 	var restHandler *RESTHandler
 	var authHandler *AuthHandler
@@ -34,7 +35,7 @@ func NewRouter(bundle *mcp.ServiceBundle) chi.Router {
 		restHandler = NewRESTHandler(bundle.Observation, bundle.Session, bundle.SessionEnd)
 
 		// Auth services
-		authHandler = NewAuthHandler(bundle.User, bundle.Team, bundle.Members)
+		authHandler = NewAuthHandler(cfg, bundle.User, bundle.Team, bundle.Members)
 
 		// Health handler with real DB checker
 		healthHandler = NewHealthHandler(&dbHealthChecker{pool: pool, queries: store.New(pool)})

@@ -23,7 +23,7 @@ func TestAuthRouting_ValidSessionToken(t *testing.T) {
 
 // TestAuthRouting_InvalidTokenRejected verifies that invalid tokens get 401.
 func TestAuthRouting_InvalidTokenRejected(t *testing.T) {
-	r := handler.NewRouter(nil)
+	r := handler.NewRouter(nil, nil)
 
 	tests := []struct {
 		name   string
@@ -90,7 +90,7 @@ func TestAuthRouting_APIKeyOnUIRoutes(t *testing.T) {
 
 // TestAuthRouting_PublicRoutesNoAuth verifies that public routes don't require auth.
 func TestAuthRouting_PublicRoutesNoAuth(t *testing.T) {
-	r := handler.NewRouter(nil)
+	r := handler.NewRouter(nil, nil)
 
 	tests := []struct {
 		method string
@@ -125,7 +125,7 @@ func TestAuthRouting_PublicRoutesNoAuth(t *testing.T) {
 
 // TestAuthRouting_AllAuthRoutesExist verifies all auth routes are registered.
 func TestAuthRouting_AllAuthRoutesExist(t *testing.T) {
-	r := handler.NewRouter(nil)
+	r := handler.NewRouter(nil, nil)
 
 	routes := []struct {
 		method string
@@ -155,7 +155,7 @@ func TestAuthRouting_AllAuthRoutesExist(t *testing.T) {
 
 // TestMCPRouteAccessible verifies the MCP endpoint is accessible.
 func TestMCPRouteAccessible(t *testing.T) {
-	r := handler.NewRouter(nil)
+	r := handler.NewRouter(nil, nil)
 
 	// POST is the primary MCP method (JSON-RPC)
 	req := httptest.NewRequest("POST", "/v1/mcp", nil)
@@ -171,7 +171,7 @@ func TestMCPRouteAccessible(t *testing.T) {
 
 // TestMCPRouteMethodSupport verifies the MCP endpoint supports required HTTP methods.
 func TestMCPRouteMethodSupport(t *testing.T) {
-	r := handler.NewRouter(nil)
+	r := handler.NewRouter(nil, nil)
 
 	methods := []string{"GET", "POST", "DELETE"}
 	for _, method := range methods {
@@ -275,7 +275,7 @@ func TestHookEventImportanceValidation(t *testing.T) {
 
 // TestRESTEndSessionRequest validates session end request format.
 func TestRESTEndSessionRequest(t *testing.T) {
-	r := handler.NewRouter(nil)
+	r := handler.NewRouter(nil, nil)
 
 	validBody := `{"session_id": "test-session-1"}`
 	req := httptest.NewRequest("POST", "/v1/api/session/end", bytes.NewBufferString(validBody))
@@ -297,7 +297,7 @@ func TestRESTEndSessionRequest(t *testing.T) {
 
 // TestRESTCommitSessionRequest validates commit request format.
 func TestRESTCommitSessionRequest(t *testing.T) {
-	r := handler.NewRouter(nil)
+	r := handler.NewRouter(nil, nil)
 
 	validBody := `{"session_id":"s1","sha":"abc123","branch":"main","message":"fix bug"}`
 	req := httptest.NewRequest("POST", "/v1/api/session/commit", bytes.NewBufferString(validBody))

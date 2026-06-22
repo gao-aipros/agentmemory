@@ -43,10 +43,17 @@ Use --migrate-on-startup to auto-apply pending migrations.`,
 				return fmt.Errorf("DB_URL is required; set via --db-url flag or DB_URL environment variable")
 			}
 
+			// Load full configuration from environment
+			cfg := config.Load()
+
 			// Resolve port: flag > env > default
 			if port == 0 {
-				cfg := config.Load()
 				port = cfg.Port
+			}
+
+			// Validate JWT secret is configured (Task #6 — fail loudly)
+			if cfg.JWTSecret == "" {
+				return fmt.Errorf("JWT_SECRET environment variable is required; set it to a strong random secret")
 			}
 
 			// Resolve migrate-on-startup: flag > env
@@ -85,8 +92,8 @@ Use --migrate-on-startup to auto-apply pending migrations.`,
 			// use the same service instances, avoiding duplicate wiring.
 			bundle := mcp.NewServiceBundle(pool)
 
-			// Create HTTP router with the shared bundle
-			router := handler.NewRouter(bundle)
+			// Create HTTP router with the shared bundle and config
+			router := handler.NewRouter(bundle, cfg)
 
 			// Replace placeholder health check with real one
 			// Note: NewRouter sets a placeholder; we override it here.

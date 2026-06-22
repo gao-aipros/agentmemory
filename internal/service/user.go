@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/agentmemory/agentmemory/internal/auth"
 	"github.com/agentmemory/agentmemory/internal/store"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -198,7 +200,15 @@ func (s *UserService) CreateAPIKey(ctx context.Context, userID, label, expiresAt
 	}
 
 	if expiresAt != "" {
-		// TODO: parse expiresAt and set ExpiresAt
+		t, err := time.Parse(time.RFC3339, expiresAt)
+		if err != nil {
+			return nil, "", fmt.Errorf("invalid expires_at format, expected RFC3339: %w", err)
+		}
+		// Don't allow expiration in the past
+		if t.Before(time.Now()) {
+			return nil, "", fmt.Errorf("expires_at must be in the future")
+		}
+		params.ExpiresAt = pgtype.Timestamptz{Time: t, Valid: true}
 	}
 
 	apiKey, err := s.queries.CreateAPIKey(ctx, params)
