@@ -66,7 +66,7 @@ func TestRESTErrorResponseFormat(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			// Create a router with nil pool (placeholder mode)
-			r := handler.NewRouter(nil)
+			r := handler.NewRouter(nil, nil)
 
 			req := httptest.NewRequest(http.MethodPost, "/v1/api/observe", strings.NewReader(tc.body))
 			req.Header.Set("Content-Type", "application/json")
@@ -227,7 +227,7 @@ func TestRESTErrorResponseJSONStructure(t *testing.T) {
 
 // TestRESTRouteRegistration verifies all expected REST routes are available.
 func TestRESTRouteRegistration(t *testing.T) {
-	r := handler.NewRouter(nil)
+	r := handler.NewRouter(nil, nil)
 
 	tests := []struct {
 		method string
@@ -268,7 +268,7 @@ func TestRESTRouteRegistration(t *testing.T) {
 
 // TestRESTContentTypeHeaders verifies that handlers return application/json.
 func TestRESTContentTypeHeaders(t *testing.T) {
-	r := handler.NewRouter(nil)
+	r := handler.NewRouter(nil, nil)
 
 	endpoints := []struct {
 		method     string

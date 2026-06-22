@@ -41,10 +41,19 @@ func AuthMiddleware(pool *pgxpool.Pool) func(next http.Handler) http.Handler {
 			var user *store.User
 			var err error
 
+			jwtSecret, jwtSecretErr := config.GetJWTSecret()
+			if jwtSecretErr != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{
+					"error": "server configuration error",
+					"message": "authentication is not configured",
+				})
+				return
+			}
+
 			switch {
 			case strings.HasPrefix(token, auth.TokenPrefix):
 				// JWT session token
-				user, err = validateSessionToken(r.Context(), token, config.GetJWTSecret(), queries)
+				user, err = validateSessionToken(r.Context(), token, jwtSecret, queries)
 			case strings.HasPrefix(token, auth.APIKeyPrefix):
 				// API key — look up by prefix
 				user, err = validateAPIKey(r.Context(), token, queries)

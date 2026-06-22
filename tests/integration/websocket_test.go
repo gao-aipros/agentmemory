@@ -35,7 +35,7 @@ func TestWebSocketConnectAndReceiveEvents(t *testing.T) {
 	require.NoError(t, err)
 	defer config.ClosePool(pool)
 
-	router := handler.NewRouter(mcp.NewServiceBundle(pool))
+	router := handler.NewRouter(mcp.NewServiceBundle(pool), nil)
 	testServer := httptest.NewServer(router)
 	defer testServer.Close()
 

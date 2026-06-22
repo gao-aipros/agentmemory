@@ -171,3 +171,34 @@ func TestLoad_ReturnsNonNilConfig(t *testing.T) {
 	cfg := config.Load()
 	assert.NotNil(t, cfg, "Load() should return a non-nil Config")
 }
+
+// =============================================================================
+// TASK #6: GetJWTSecret — fail loudly when JWT_SECRET is not set
+// =============================================================================
+
+func TestGetJWTSecret_EmptyEnvReturnsError(t *testing.T) {
+	clearEnv()
+
+	secret, err := config.GetJWTSecret()
+	assert.Error(t, err, "GetJWTSecret should return an error when JWT_SECRET is empty")
+	assert.Empty(t, secret, "secret should be empty when an error is returned")
+	assert.Contains(t, err.Error(), "JWT_SECRET", "error message should mention JWT_SECRET")
+}
+
+func TestGetJWTSecret_SetEnvReturnsValue(t *testing.T) {
+	clearEnv()
+	os.Setenv("JWT_SECRET", "my-production-secret")
+
+	secret, err := config.GetJWTSecret()
+	assert.NoError(t, err, "GetJWTSecret should not error when JWT_SECRET is set")
+	assert.Equal(t, "my-production-secret", secret, "should return the env var value")
+}
+
+func TestGetJWTSecret_NoFallbackToHardcoded(t *testing.T) {
+	clearEnv()
+
+	_, err := config.GetJWTSecret()
+	assert.Error(t, err, "GetJWTSecret MUST NOT fall back to a hardcoded default")
+	// The old hardcoded value should never appear in error or return
+	assert.NotContains(t, err.Error(), "agentmemory-dev-secret", "error must not leak old hardcoded secret")
+}

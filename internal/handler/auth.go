@@ -14,14 +14,16 @@ import (
 
 // AuthHandler handles authentication endpoints: login, API key management.
 type AuthHandler struct {
+	cfg       *config.Config
 	userSvc   *service.UserService
 	teamSvc   *service.TeamService
 	memberSvc *service.TeamMembersService
 }
 
 // NewAuthHandler creates a new AuthHandler.
-func NewAuthHandler(userSvc *service.UserService, teamSvc *service.TeamService, memberSvc *service.TeamMembersService) *AuthHandler {
+func NewAuthHandler(cfg *config.Config, userSvc *service.UserService, teamSvc *service.TeamService, memberSvc *service.TeamMembersService) *AuthHandler {
 	return &AuthHandler{
+		cfg:       cfg,
 		userSvc:   userSvc,
 		teamSvc:   teamSvc,
 		memberSvc: memberSvc,
@@ -99,10 +101,17 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Validate JWT secret is configured
+	if h.cfg.JWTSecret == "" {
+		slog.Error("JWT secret not configured")
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "authentication configuration error",
+		})
+		return
+	}
+
 	// Generate JWT
-	jwtSecret := config.GetJWTSecret()
-	expiry := 24 * time.Hour
-	token, err := auth.GenerateToken(user.ID, expiry, jwtSecret)
+	token, err := auth.GenerateToken(user.ID, h.cfg.JWTExpiry, h.cfg.JWTSecret)
 	if err != nil {
 		slog.Error("failed to generate JWT", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{
@@ -148,15 +157,22 @@ func (h *AuthHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Warn("registration failed", "error", err)
 		writeJSON(w, http.StatusConflict, map[string]string{
-			"error": err.Error(),
+			"error": "registration failed",
+		})
+		return
+	}
+
+	// Validate JWT secret is configured
+	if h.cfg.JWTSecret == "" {
+		slog.Error("JWT secret not configured")
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "authentication configuration error",
 		})
 		return
 	}
 
 	// Auto-login: generate JWT for the new user
-	jwtSecret := config.GetJWTSecret()
-	expiry := 24 * time.Hour
-	token, err := auth.GenerateToken(user.ID, expiry, jwtSecret)
+	token, err := auth.GenerateToken(user.ID, h.cfg.JWTExpiry, h.cfg.JWTSecret)
 	if err != nil {
 		slog.Error("failed to generate JWT", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{
