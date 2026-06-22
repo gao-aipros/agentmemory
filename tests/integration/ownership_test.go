@@ -124,12 +124,18 @@ func TestOwnership_PrivateObservation(t *testing.T) {
 	assert.Equal(t, "Bob's private observation", fetchedBob.Title)
 
 	// Verify observations are in each user's session
-	aliceObsList, err := queries.ListObservationsBySession(ctx, aliceSession)
+	aliceObsList, err := queries.ListObservationsBySession(ctx, store.ListObservationsBySessionParams{
+		SessionID: aliceSession,
+		Limit:     50,
+	})
 	require.NoError(t, err)
 	assert.Len(t, aliceObsList, 1)
 	assert.Equal(t, aliceID, *aliceObsList[0].OwnerUserID)
 
-	bobObsList, err := queries.ListObservationsBySession(ctx, bobSession)
+	bobObsList, err := queries.ListObservationsBySession(ctx, store.ListObservationsBySessionParams{
+		SessionID: bobSession,
+		Limit:     50,
+	})
 	require.NoError(t, err)
 	assert.Len(t, bobObsList, 1)
 	assert.Equal(t, bobID, *bobObsList[0].OwnerUserID)

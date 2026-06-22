@@ -149,11 +149,16 @@ func (q *Queries) InsertObservation(ctx context.Context, arg InsertObservationPa
 }
 
 const listObservationsBySession = `-- name: ListObservationsBySession :many
-SELECT id, session_id, owner_type, owner_user_id, owner_team_id, visibility, type, title, narrative, facts, concepts, files, importance, timestamp, created_at FROM observations WHERE session_id = $1 ORDER BY timestamp
+SELECT id, session_id, owner_type, owner_user_id, owner_team_id, visibility, type, title, narrative, facts, concepts, files, importance, timestamp, created_at FROM observations WHERE session_id = $1 ORDER BY timestamp LIMIT $2
 `
 
-func (q *Queries) ListObservationsBySession(ctx context.Context, sessionID string) ([]Observation, error) {
-	rows, err := q.db.Query(ctx, listObservationsBySession, sessionID)
+type ListObservationsBySessionParams struct {
+	SessionID string
+	Limit     int32
+}
+
+func (q *Queries) ListObservationsBySession(ctx context.Context, arg ListObservationsBySessionParams) ([]Observation, error) {
+	rows, err := q.db.Query(ctx, listObservationsBySession, arg.SessionID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}

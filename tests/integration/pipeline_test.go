@@ -82,7 +82,10 @@ func TestPipelineObserveToCompressed(t *testing.T) {
 	}
 
 	// Step 5: List observations by session
-	observations, err := queries.ListObservationsBySession(ctx, sessionID)
+	observations, err := queries.ListObservationsBySession(ctx, store.ListObservationsBySessionParams{
+		SessionID: sessionID,
+		Limit:     50,
+	})
 	require.NoError(t, err)
 	assert.Len(t, observations, 1)
 }
@@ -155,4 +158,43 @@ func TestPipelineImportanceValidation(t *testing.T) {
 	})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "importance must be between")
+}
+
+// TestListObservationsBySession_Limit verifies that ListObservationsBySession
+// respects its LIMIT parameter and does not return unbounded results (#52).
+func TestListObservationsBySession_Limit(t *testing.T) {
+	db := SetupTestDB(t)
+	defer TeardownTestDB(t, db)
+
+	ctx := context.Background()
+	runMigrations(t, db)
+
+	userID := uuid.New().String()
+	_, err := db.Pool.Exec(ctx, `INSERT INTO users (id, email, password_hash, name) VALUES ($1, $2, $3, $4)`,
+		userID, "limit-obs@example.com", "hash", "Limit Obs User")
+	require.NoError(t, err)
+
+	sessionID := uuid.New().String()
+	_, err = db.Pool.Exec(ctx, `INSERT INTO sessions (id, user_id, status) VALUES ($1, $2, 'active')`,
+		sessionID, userID)
+	require.NoError(t, err)
+
+	queries := store.New(db.Pool)
+
+	// Insert 5 observations
+	for i := 0; i < 5; i++ {
+		obsID := uuid.New().String()
+		_, err := db.Pool.Exec(ctx, `INSERT INTO observations (id, session_id, owner_type, owner_user_id, visibility, type, title, narrative, facts, concepts, files, importance, timestamp)
+			VALUES ($1, $2, 'user', $3, 'private', 'note', $4, 'narrative', '{}', '{}', '{}', 0.5, now())`,
+			obsID, sessionID, userID, "observation-"+obsID[:8])
+		require.NoError(t, err)
+	}
+
+	// Query with limit=3 — should return exactly 3
+	observations, err := queries.ListObservationsBySession(ctx, store.ListObservationsBySessionParams{
+		SessionID: sessionID,
+		Limit:     3,
+	})
+	require.NoError(t, err)
+	assert.Len(t, observations, 3)
 }
