@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/agentmemory/agentmemory/internal/mcp"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -88,4 +89,52 @@ func TestNewServiceBundleNilPoolDegradation(t *testing.T) {
 	assert.NotNil(t, bundle.Observation)
 	assert.NotNil(t, bundle.Compression)
 	assert.NotNil(t, bundle.Embedding)
+}
+
+// =============================================================================
+// New ServiceBundle Field Tests (Task #24)
+// Verifies that all 10 newly added service fields are populated.
+// =============================================================================
+
+// TestNewServiceBundleNewFields verifies the 10 new service fields added in Task #24.
+func TestNewServiceBundleNewFields(t *testing.T) {
+	bundle := mcp.NewServiceBundle(nil)
+
+	require.NotNil(t, bundle, "ServiceBundle should not be nil")
+
+	// Slot service (was created but never stored — now stored)
+	assert.NotNil(t, bundle.Slot, "Slot service should not be nil")
+
+	// Signalling services
+	assert.NotNil(t, bundle.Signal, "Signal service should not be nil")
+	assert.NotNil(t, bundle.Sentinel, "Sentinel service should not be nil")
+	assert.NotNil(t, bundle.Checkpoint, "Checkpoint service should not be nil")
+
+	// Planning & workflow services
+	assert.NotNil(t, bundle.Sketch, "Sketch service should not be nil")
+	assert.NotNil(t, bundle.Routine, "Routine service should not be nil")
+
+	// Operational services
+	assert.NotNil(t, bundle.Snapshot, "Snapshot service should not be nil")
+	assert.NotNil(t, bundle.FileHistory, "FileHistory service should not be nil")
+	assert.NotNil(t, bundle.Patterns, "Patterns service should not be nil")
+	assert.NotNil(t, bundle.Crystallize, "Crystallize service should not be nil")
+}
+
+// TestRegisterAllToolsPanicsOnNil verifies that RegisterAllTools panics
+// when called with a nil ServiceBundle (fail loudly per CLAUDE.md rule #12).
+func TestRegisterAllToolsPanicsOnNil(t *testing.T) {
+	defer func() {
+		r := recover()
+		require.NotNil(t, r, "RegisterAllTools should panic when called with nil ServiceBundle")
+		assert.Contains(t, r.(string), "nil ServiceBundle",
+			"panic message should mention nil ServiceBundle")
+	}()
+
+	mcpServer := sdkmcp.NewServer(
+		&sdkmcp.Implementation{Name: "test", Version: "1.0.0"},
+		&sdkmcp.ServerOptions{},
+	)
+	mcp.RegisterAllTools(mcpServer, nil)
+	t.Error("RegisterAllTools should have panicked but didn't")
 }

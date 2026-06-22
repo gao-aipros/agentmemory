@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/agentmemory/agentmemory/internal/auth"
 	"github.com/agentmemory/agentmemory/internal/service"
@@ -36,6 +37,18 @@ type ServiceBundle struct {
 	LLM           *service.LLMService
 	SessionEnd    *service.SessionEndHandler
 	Eviction      *service.EvictionService
+
+	// v1 Service Tools (Task #24)
+	Signal      *service.SignalService
+	Sentinel    *service.SentinelService
+	Checkpoint  *service.CheckpointService
+	Sketch      *service.SketchService
+	Routine     *service.RoutineService
+	Snapshot    *service.SnapshotService
+	FileHistory *service.FileHistoryService
+	Patterns    *service.PatternsService
+	Crystallize *service.CrystallizeService
+	Slot        *service.SlotService
 
 	Pool *pgxpool.Pool
 }
@@ -69,6 +82,15 @@ func NewServiceBundle(pool *pgxpool.Pool) *ServiceBundle {
 	ctxSvc := service.NewContextService(pool, embedSvc, slotSvc)
 	evictSvc := service.NewEvictionService(pool)
 	sessionEndH := service.NewSessionEndHandler(sessionSvc, summarizer, consolidator, reflector)
+	signalSvc := service.NewSignalService(pool)
+	sentinelSvc := service.NewSentinelService(pool)
+	checkpointSvc := service.NewCheckpointService(pool)
+	sketchSvc := service.NewSketchService(pool)
+	routineSvc := service.NewRoutineService(pool)
+	snapshotSvc := service.NewSnapshotService(pool)
+	fileHistorySvc := service.NewFileHistoryService(pool)
+	patternsSvc := service.NewPatternsService(pool)
+	crystallizeSvc := service.NewCrystallizeService(pool)
 
 	return &ServiceBundle{
 		Observation:   obsSvc,
@@ -88,6 +110,16 @@ func NewServiceBundle(pool *pgxpool.Pool) *ServiceBundle {
 		LLM:           llmSvc,
 		SessionEnd:    sessionEndH,
 		Eviction:      evictSvc,
+		Signal:        signalSvc,
+		Sentinel:      sentinelSvc,
+		Checkpoint:    checkpointSvc,
+		Sketch:        sketchSvc,
+		Routine:       routineSvc,
+		Snapshot:      snapshotSvc,
+		FileHistory:   fileHistorySvc,
+		Patterns:      patternsSvc,
+		Crystallize:   crystallizeSvc,
+		Slot:          slotSvc,
 		Pool:          pool,
 	}
 }
@@ -166,11 +198,11 @@ func optStringProp(description string) map[string]interface{} {
 // =============================================================================
 
 // RegisterAllTools registers every agentmemory MCP tool on the given server.
-// The svc bundle provides all service dependencies. If svc is nil, an empty
-// ServiceBundle is used and tools will return service-unavailable errors when called.
+// The svc bundle provides all service dependencies. Must be a properly initialized
+// bundle from NewServiceBundle() — passing nil will panic (fail loudly, rule #12).
 func RegisterAllTools(mcpServer *mcp.Server, svc *ServiceBundle) {
 	if svc == nil {
-		svc = &ServiceBundle{}
+		panic("RegisterAllTools called with nil ServiceBundle — must pass a properly initialized bundle from NewServiceBundle()")
 	}
 
 	// Memory Operations (T110-T115)
@@ -540,8 +572,25 @@ func registerMemoryCompressFile(mcpServer *mcp.Server, svc *ServiceBundle) {
 			"required": []string{"file_path"},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		// Stub: file compression not yet implemented
-		return stubbedToolResult("memory_compress_file"), nil
+		var a args
+		if err := parseArguments(req, &a); err != nil {
+			return nil, err
+		}
+
+		if err := svc.Compression.CompressFile(ctx, a.FilePath); err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, nil
+		}
+
+		return jsonResult(map[string]interface{}{
+			"status":    "compressed",
+			"file_path": a.FilePath,
+			"backup":    "Created as <filename>.original.md",
+		})
 	})
 }
 
@@ -1228,6 +1277,12 @@ func registerMemoryConsolidate(mcpServer *mcp.Server, svc *ServiceBundle) {
 }
 
 func registerMemoryCrystallize(mcpServer *mcp.Server, svc *ServiceBundle) {
+	type args struct {
+		ActionIDs string `json:"action_ids"`
+		Project   string `json:"project,omitempty"`
+		SessionID string `json:"session_id,omitempty"`
+	}
+
 	mcpServer.AddTool(&mcp.Tool{
 		Name:        "memory_crystallize",
 		Description: "Compress completed action chains into compact crystal digests using LLM summarization.",
@@ -1241,7 +1296,34 @@ func registerMemoryCrystallize(mcpServer *mcp.Server, svc *ServiceBundle) {
 			"required": []string{"action_ids"},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return stubbedToolResult("memory_crystallize"), nil
+		var a args
+		if err := parseArguments(req, &a); err != nil {
+			return nil, err
+		}
+
+		ids := strings.Split(a.ActionIDs, ",")
+		for i := range ids {
+			ids[i] = strings.TrimSpace(ids[i])
+		}
+
+		crystal, err := svc.Crystallize.Crystallize(ctx, ids, a.Project, a.SessionID)
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, nil
+		}
+
+		return jsonResult(map[string]interface{}{
+			"crystal_id":    crystal.ID,
+			"narrative":     crystal.Narrative,
+			"key_outcomes":  crystal.KeyOutcomes,
+			"files_affected": crystal.FilesAffected,
+			"lessons":       crystal.Lessons,
+			"status":        "crystallized",
+		})
 	})
 }
 
@@ -1465,6 +1547,10 @@ func registerMemoryProfile(mcpServer *mcp.Server, svc *ServiceBundle) {
 }
 
 func registerMemoryPatterns(mcpServer *mcp.Server, svc *ServiceBundle) {
+	type args struct {
+		Project string `json:"project,omitempty"`
+	}
+
 	mcpServer.AddTool(&mcp.Tool{
 		Name:        "memory_patterns",
 		Description: "Detect recurring patterns across sessions.",
@@ -1476,7 +1562,22 @@ func registerMemoryPatterns(mcpServer *mcp.Server, svc *ServiceBundle) {
 			"required": []string{},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return stubbedToolResult("memory_patterns"), nil
+		var a args
+		if err := parseArguments(req, &a); err != nil {
+			return nil, err
+		}
+
+		summary, err := svc.Patterns.DetectPatterns(ctx, a.Project)
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, nil
+		}
+
+		return jsonResult(summary)
 	})
 }
 
@@ -1541,6 +1642,16 @@ func registerMemoryVisionSearch(mcpServer *mcp.Server, svc *ServiceBundle) {
 // =============================================================================
 
 func registerMemorySlotCreate(mcpServer *mcp.Server, svc *ServiceBundle) {
+	type args struct {
+		Label       string `json:"label"`
+		Content     string `json:"content,omitempty"`
+		Description string `json:"description,omitempty"`
+		Scope       string `json:"scope,omitempty"`
+		Project     string `json:"project,omitempty"`
+		Pinned      string `json:"pinned,omitempty"`
+		SizeLimit   int    `json:"size_limit,omitempty"`
+	}
+
 	mcpServer.AddTool(&mcp.Tool{
 		Name:        "memory_slot_create",
 		Description: "Create a new memory slot.",
@@ -1558,11 +1669,38 @@ func registerMemorySlotCreate(mcpServer *mcp.Server, svc *ServiceBundle) {
 			"required": []string{"label"},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return stubbedToolResult("memory_slot_create"), nil
+		var a args
+		if err := parseArguments(req, &a); err != nil {
+			return nil, err
+		}
+
+		pinned := a.Pinned != "false"
+		slot, err := svc.Slot.CreateSlot(ctx, a.Label, a.Content, a.Description, a.Scope, a.Project, pinned, a.SizeLimit)
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, nil
+		}
+
+		return jsonResult(map[string]interface{}{
+			"label":      slot.Label,
+			"scope":      slot.Scope,
+			"project":    slot.Project,
+			"status":     "created",
+			"size_limit": slot.SizeLimit,
+		})
 	})
 }
 
 func registerMemorySlotGet(mcpServer *mcp.Server, svc *ServiceBundle) {
+	type args struct {
+		Label   string `json:"label"`
+		Project string `json:"project,omitempty"`
+	}
+
 	mcpServer.AddTool(&mcp.Tool{
 		Name:        "memory_slot_get",
 		Description: "Read a single slot by label.",
@@ -1575,11 +1713,33 @@ func registerMemorySlotGet(mcpServer *mcp.Server, svc *ServiceBundle) {
 			"required": []string{"label"},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return stubbedToolResult("memory_slot_get"), nil
+		var a args
+		if err := parseArguments(req, &a); err != nil {
+			return nil, err
+		}
+
+		content, err := svc.Slot.GetSlot(ctx, a.Label)
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, nil
+		}
+
+		return jsonResult(map[string]interface{}{
+			"label":   a.Label,
+			"content": content,
+		})
 	})
 }
 
 func registerMemorySlotList(mcpServer *mcp.Server, svc *ServiceBundle) {
+	type args struct {
+		Project string `json:"project,omitempty"`
+	}
+
 	mcpServer.AddTool(&mcp.Tool{
 		Name:        "memory_slot_list",
 		Description: "List all memory slots (global + project-scoped).",
@@ -1591,11 +1751,35 @@ func registerMemorySlotList(mcpServer *mcp.Server, svc *ServiceBundle) {
 			"required": []string{},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return stubbedToolResult("memory_slot_list"), nil
+		var a args
+		if err := parseArguments(req, &a); err != nil {
+			return nil, err
+		}
+
+		slots, err := svc.Slot.ListSlots(ctx, a.Project)
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, nil
+		}
+
+		return jsonResult(map[string]interface{}{
+			"slots": slots,
+			"count": len(slots),
+		})
 	})
 }
 
 func registerMemorySlotReplace(mcpServer *mcp.Server, svc *ServiceBundle) {
+	type args struct {
+		Label   string `json:"label"`
+		Content string `json:"content"`
+		Project string `json:"project,omitempty"`
+	}
+
 	mcpServer.AddTool(&mcp.Tool{
 		Name:        "memory_slot_replace",
 		Description: "Replace slot content in place.",
@@ -1609,11 +1793,33 @@ func registerMemorySlotReplace(mcpServer *mcp.Server, svc *ServiceBundle) {
 			"required": []string{"label", "content"},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return stubbedToolResult("memory_slot_replace"), nil
+		var a args
+		if err := parseArguments(req, &a); err != nil {
+			return nil, err
+		}
+
+		if err := svc.Slot.ReplaceSlot(ctx, a.Label, a.Content); err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, nil
+		}
+
+		return jsonResult(map[string]interface{}{
+			"label":  a.Label,
+			"status": "replaced",
+		})
 	})
 }
 
 func registerMemorySlotDelete(mcpServer *mcp.Server, svc *ServiceBundle) {
+	type args struct {
+		Label   string `json:"label"`
+		Project string `json:"project,omitempty"`
+	}
+
 	mcpServer.AddTool(&mcp.Tool{
 		Name:        "memory_slot_delete",
 		Description: "Delete a slot.",
@@ -1626,11 +1832,34 @@ func registerMemorySlotDelete(mcpServer *mcp.Server, svc *ServiceBundle) {
 			"required": []string{"label"},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return stubbedToolResult("memory_slot_delete"), nil
+		var a args
+		if err := parseArguments(req, &a); err != nil {
+			return nil, err
+		}
+
+		if err := svc.Slot.DeleteSlot(ctx, a.Label); err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, nil
+		}
+
+		return jsonResult(map[string]interface{}{
+			"label":  a.Label,
+			"status": "deleted",
+		})
 	})
 }
 
 func registerMemorySlotAppend(mcpServer *mcp.Server, svc *ServiceBundle) {
+	type args struct {
+		Label   string `json:"label"`
+		Text    string `json:"text"`
+		Project string `json:"project,omitempty"`
+	}
+
 	mcpServer.AddTool(&mcp.Tool{
 		Name:        "memory_slot_append",
 		Description: "Append text to an existing slot.",
@@ -1644,11 +1873,35 @@ func registerMemorySlotAppend(mcpServer *mcp.Server, svc *ServiceBundle) {
 			"required": []string{"label", "text"},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return stubbedToolResult("memory_slot_append"), nil
+		var a args
+		if err := parseArguments(req, &a); err != nil {
+			return nil, err
+		}
+
+		if err := svc.Slot.AppendSlot(ctx, a.Label, a.Text); err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, nil
+		}
+
+		return jsonResult(map[string]interface{}{
+			"label":  a.Label,
+			"status": "appended",
+		})
 	})
 }
 
 func registerMemorySignalRead(mcpServer *mcp.Server, svc *ServiceBundle) {
+	type args struct {
+		AgentID    string `json:"agent_id"`
+		Limit      int    `json:"limit,omitempty"`
+		ThreadID   string `json:"thread_id,omitempty"`
+		UnreadOnly string `json:"unread_only,omitempty"`
+	}
+
 	mcpServer.AddTool(&mcp.Tool{
 		Name:        "memory_signal_read",
 		Description: "Read messages for an agent.",
@@ -1663,11 +1916,38 @@ func registerMemorySignalRead(mcpServer *mcp.Server, svc *ServiceBundle) {
 			"required": []string{"agent_id"},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return stubbedToolResult("memory_signal_read"), nil
+		var a args
+		if err := parseArguments(req, &a); err != nil {
+			return nil, err
+		}
+
+		unreadOnly := a.UnreadOnly == "true"
+		signals, err := svc.Signal.ReadSignals(ctx, a.AgentID, a.Limit, a.ThreadID, unreadOnly)
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, nil
+		}
+
+		return jsonResult(map[string]interface{}{
+			"signals": signals,
+			"count":   len(signals),
+		})
 	})
 }
 
 func registerMemorySignalSend(mcpServer *mcp.Server, svc *ServiceBundle) {
+	type args struct {
+		From    string `json:"from"`
+		Content string `json:"content"`
+		To      string `json:"to,omitempty"`
+		ReplyTo string `json:"reply_to,omitempty"`
+		Type    string `json:"type,omitempty"`
+	}
+
 	mcpServer.AddTool(&mcp.Tool{
 		Name:        "memory_signal_send",
 		Description: "Send a message to another agent or broadcast.",
@@ -1683,11 +1963,37 @@ func registerMemorySignalSend(mcpServer *mcp.Server, svc *ServiceBundle) {
 			"required": []string{"from", "content"},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return stubbedToolResult("memory_signal_send"), nil
+		var a args
+		if err := parseArguments(req, &a); err != nil {
+			return nil, err
+		}
+
+		signal, err := svc.Signal.SendSignal(ctx, a.From, a.To, a.Content, a.ReplyTo, a.Type)
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, nil
+		}
+
+		return jsonResult(map[string]interface{}{
+			"signal_id": signal.ID,
+			"status":    "sent",
+		})
 	})
 }
 
 func registerMemorySentinelCreate(mcpServer *mcp.Server, svc *ServiceBundle) {
+	type args struct {
+		Name            string `json:"name"`
+		SentinelType    string `json:"type"`
+		Config          string `json:"config,omitempty"`
+		LinkedActionIDs string `json:"linked_action_ids,omitempty"`
+		ExpiresInMs     int64  `json:"expires_in_ms,omitempty"`
+	}
+
 	mcpServer.AddTool(&mcp.Tool{
 		Name:        "memory_sentinel_create",
 		Description: "Create an event-driven sentinel that watches for conditions and auto-unblocks gated actions.",
@@ -1703,11 +2009,36 @@ func registerMemorySentinelCreate(mcpServer *mcp.Server, svc *ServiceBundle) {
 			"required": []string{"name", "type"},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return stubbedToolResult("memory_sentinel_create"), nil
+		var a args
+		if err := parseArguments(req, &a); err != nil {
+			return nil, err
+		}
+
+		sentinel, err := svc.Sentinel.CreateSentinel(ctx, a.Name, a.SentinelType, a.Config, a.LinkedActionIDs, a.ExpiresInMs)
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, nil
+		}
+
+		return jsonResult(map[string]interface{}{
+			"sentinel_id": sentinel.ID,
+			"name":        sentinel.Name,
+			"type":        sentinel.Type,
+			"status":      "created",
+		})
 	})
 }
 
 func registerMemorySentinelTrigger(mcpServer *mcp.Server, svc *ServiceBundle) {
+	type args struct {
+		SentinelID string `json:"sentinel_id"`
+		Result     string `json:"result,omitempty"`
+	}
+
 	mcpServer.AddTool(&mcp.Tool{
 		Name:        "memory_sentinel_trigger",
 		Description: "Externally fire a sentinel, providing an optional result payload.",
@@ -1720,11 +2051,37 @@ func registerMemorySentinelTrigger(mcpServer *mcp.Server, svc *ServiceBundle) {
 			"required": []string{"sentinel_id"},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return stubbedToolResult("memory_sentinel_trigger"), nil
+		var a args
+		if err := parseArguments(req, &a); err != nil {
+			return nil, err
+		}
+
+		if err := svc.Sentinel.TriggerSentinel(ctx, a.SentinelID, a.Result); err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, nil
+		}
+
+		return jsonResult(map[string]interface{}{
+			"sentinel_id": a.SentinelID,
+			"status":      "triggered",
+		})
 	})
 }
 
 func registerMemoryCheckpoint(mcpServer *mcp.Server, svc *ServiceBundle) {
+	type args struct {
+		Operation       string `json:"operation"`
+		Name            string `json:"name,omitempty"`
+		CheckpointType  string `json:"type,omitempty"`
+		CheckpointID    string `json:"checkpoint_id,omitempty"`
+		Status          string `json:"status,omitempty"`
+		LinkedActionIDs string `json:"linked_action_ids,omitempty"`
+	}
+
 	mcpServer.AddTool(&mcp.Tool{
 		Name:        "memory_checkpoint",
 		Description: "Create or resolve an external checkpoint (CI result, approval, deploy status) that gates action progress.",
@@ -1741,11 +2098,73 @@ func registerMemoryCheckpoint(mcpServer *mcp.Server, svc *ServiceBundle) {
 			"required": []string{"operation"},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return stubbedToolResult("memory_checkpoint"), nil
+		var a args
+		if err := parseArguments(req, &a); err != nil {
+			return nil, err
+		}
+
+		switch a.Operation {
+		case "create":
+			cp, err := svc.Checkpoint.CreateCheckpoint(ctx, a.Name, a.CheckpointType, a.LinkedActionIDs)
+			if err != nil {
+				return &mcp.CallToolResult{
+					IsError: true,
+					Content: []mcp.Content{
+						&mcp.TextContent{Text: err.Error()},
+					},
+				}, nil
+			}
+			return jsonResult(map[string]interface{}{
+				"checkpoint_id": cp.ID,
+				"name":          cp.Name,
+				"status":        cp.Status,
+			})
+		case "resolve":
+			if err := svc.Checkpoint.ResolveCheckpoint(ctx, a.CheckpointID, a.Status); err != nil {
+				return &mcp.CallToolResult{
+					IsError: true,
+					Content: []mcp.Content{
+						&mcp.TextContent{Text: err.Error()},
+					},
+				}, nil
+			}
+			return jsonResult(map[string]interface{}{
+				"checkpoint_id": a.CheckpointID,
+				"status":        a.Status,
+			})
+		case "list":
+			cps, err := svc.Checkpoint.ListCheckpoints(ctx)
+			if err != nil {
+				return &mcp.CallToolResult{
+					IsError: true,
+					Content: []mcp.Content{
+						&mcp.TextContent{Text: err.Error()},
+					},
+				}, nil
+			}
+			return jsonResult(map[string]interface{}{
+				"checkpoints": cps,
+				"count":       len(cps),
+			})
+		default:
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: fmt.Sprintf("unknown operation %q — use create, resolve, or list", a.Operation)},
+				},
+			}, nil
+		}
 	})
 }
 
 func registerMemorySketchCreate(mcpServer *mcp.Server, svc *ServiceBundle) {
+	type args struct {
+		Title       string `json:"title"`
+		Description string `json:"description,omitempty"`
+		Project     string `json:"project,omitempty"`
+		ExpiresInMs int64  `json:"expires_in_ms,omitempty"`
+	}
+
 	mcpServer.AddTool(&mcp.Tool{
 		Name:        "memory_sketch_create",
 		Description: "Create an ephemeral action graph for exploratory work.",
@@ -1760,11 +2179,35 @@ func registerMemorySketchCreate(mcpServer *mcp.Server, svc *ServiceBundle) {
 			"required": []string{"title"},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return stubbedToolResult("memory_sketch_create"), nil
+		var a args
+		if err := parseArguments(req, &a); err != nil {
+			return nil, err
+		}
+
+		sketch, err := svc.Sketch.CreateSketch(ctx, a.Title, a.Description, a.Project, a.ExpiresInMs)
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, nil
+		}
+
+		return jsonResult(map[string]interface{}{
+			"sketch_id": sketch.ID,
+			"title":     sketch.Title,
+			"status":    "created",
+		})
 	})
 }
 
 func registerMemorySketchPromote(mcpServer *mcp.Server, svc *ServiceBundle) {
+	type args struct {
+		SketchID string `json:"sketch_id"`
+		Project  string `json:"project,omitempty"`
+	}
+
 	mcpServer.AddTool(&mcp.Tool{
 		Name:        "memory_sketch_promote",
 		Description: "Promote a sketch's ephemeral actions to permanent actions.",
@@ -1777,11 +2220,36 @@ func registerMemorySketchPromote(mcpServer *mcp.Server, svc *ServiceBundle) {
 			"required": []string{"sketch_id"},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return stubbedToolResult("memory_sketch_promote"), nil
+		var a args
+		if err := parseArguments(req, &a); err != nil {
+			return nil, err
+		}
+
+		sketch, err := svc.Sketch.PromoteSketch(ctx, a.SketchID, a.Project)
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, nil
+		}
+
+		return jsonResult(map[string]interface{}{
+			"sketch_id": sketch.ID,
+			"title":     sketch.Title,
+			"status":    "promoted",
+		})
 	})
 }
 
 func registerMemoryRoutineRun(mcpServer *mcp.Server, svc *ServiceBundle) {
+	type args struct {
+		RoutineID   string `json:"routine_id"`
+		Project     string `json:"project,omitempty"`
+		InitiatedBy string `json:"initiated_by,omitempty"`
+	}
+
 	mcpServer.AddTool(&mcp.Tool{
 		Name:        "memory_routine_run",
 		Description: "Instantiate a frozen workflow routine, creating actions for each step with proper dependencies.",
@@ -1795,11 +2263,35 @@ func registerMemoryRoutineRun(mcpServer *mcp.Server, svc *ServiceBundle) {
 			"required": []string{"routine_id"},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return stubbedToolResult("memory_routine_run"), nil
+		var a args
+		if err := parseArguments(req, &a); err != nil {
+			return nil, err
+		}
+
+		run, err := svc.Routine.RunRoutine(ctx, a.RoutineID, a.Project, a.InitiatedBy)
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, nil
+		}
+
+		return jsonResult(map[string]interface{}{
+			"run_id":      run.ID,
+			"routine_id":  run.RoutineID,
+			"action_count": len(run.Actions),
+			"status":      "running",
+		})
 	})
 }
 
 func registerMemorySnapshotCreate(mcpServer *mcp.Server, svc *ServiceBundle) {
+	type args struct {
+		Message string `json:"message,omitempty"`
+	}
+
 	mcpServer.AddTool(&mcp.Tool{
 		Name:        "memory_snapshot_create",
 		Description: "Create a git-versioned snapshot of current memory state.",
@@ -1811,11 +2303,35 @@ func registerMemorySnapshotCreate(mcpServer *mcp.Server, svc *ServiceBundle) {
 			"required": []string{},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return stubbedToolResult("memory_snapshot_create"), nil
+		var a args
+		if err := parseArguments(req, &a); err != nil {
+			return nil, err
+		}
+
+		snap, err := svc.Snapshot.CreateSnapshot(ctx, a.Message)
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, nil
+		}
+
+		return jsonResult(map[string]interface{}{
+			"snapshot_id": snap.ID,
+			"git_sha":     snap.GitSHA,
+			"status":      "created",
+		})
 	})
 }
 
 func registerMemoryFileHistory(mcpServer *mcp.Server, svc *ServiceBundle) {
+	type args struct {
+		Files     string `json:"files"`
+		SessionID string `json:"session_id,omitempty"`
+	}
+
 	mcpServer.AddTool(&mcp.Tool{
 		Name:        "memory_file_history",
 		Description: "Get past observations about specific files.",
@@ -1828,7 +2344,31 @@ func registerMemoryFileHistory(mcpServer *mcp.Server, svc *ServiceBundle) {
 			"required": []string{"files"},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return stubbedToolResult("memory_file_history"), nil
+		var a args
+		if err := parseArguments(req, &a); err != nil {
+			return nil, err
+		}
+
+		fileList := strings.Split(a.Files, ",")
+		for i := range fileList {
+			fileList[i] = strings.TrimSpace(fileList[i])
+		}
+
+		entries, err := svc.FileHistory.GetFileHistory(ctx, fileList, a.SessionID)
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, nil
+		}
+
+		return jsonResult(map[string]interface{}{
+			"files":  fileList,
+			"history": entries,
+			"count":   len(entries),
+		})
 	})
 }
 
