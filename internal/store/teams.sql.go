@@ -67,11 +67,16 @@ func (q *Queries) GetTeam(ctx context.Context, id string) (Team, error) {
 }
 
 const listTeamsByOwner = `-- name: ListTeamsByOwner :many
-SELECT id, name, owner_id, default_visibility, created_at FROM teams WHERE owner_id = $1 ORDER BY created_at DESC
+SELECT id, name, owner_id, default_visibility, created_at FROM teams WHERE owner_id = $1 ORDER BY created_at DESC LIMIT $2
 `
 
-func (q *Queries) ListTeamsByOwner(ctx context.Context, ownerID string) ([]Team, error) {
-	rows, err := q.db.Query(ctx, listTeamsByOwner, ownerID)
+type ListTeamsByOwnerParams struct {
+	OwnerID string
+	Limit   int32
+}
+
+func (q *Queries) ListTeamsByOwner(ctx context.Context, arg ListTeamsByOwnerParams) ([]Team, error) {
+	rows, err := q.db.Query(ctx, listTeamsByOwner, arg.OwnerID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}

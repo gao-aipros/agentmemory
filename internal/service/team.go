@@ -100,9 +100,12 @@ func (s *TeamService) DeleteTeam(ctx context.Context, id, ownerID string) error 
 	return nil
 }
 
-// ListTeamsByOwner lists all teams owned by a specific user.
-func (s *TeamService) ListTeamsByOwner(ctx context.Context, ownerID string) ([]store.Team, error) {
-	teams, err := s.queries.ListTeamsByOwner(ctx, ownerID)
+// ListTeamsByOwner lists teams owned by a specific user, up to limit.
+func (s *TeamService) ListTeamsByOwner(ctx context.Context, ownerID string, limit int32) ([]store.Team, error) {
+	teams, err := s.queries.ListTeamsByOwner(ctx, store.ListTeamsByOwnerParams{
+		OwnerID: ownerID,
+		Limit:   limit,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list teams: %w", err)
 	}

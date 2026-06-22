@@ -105,6 +105,7 @@ func newTeamCreateCommand() *cobra.Command {
 	cmd.Flags().StringVar(&dbURL, "db-url", "", "Database URL")
 	cmd.Flags().StringVar(&teamName, "name", "", "Team name")
 	cmd.Flags().StringVar(&ownerID, "owner-id", "", "Owner user ID")
+
 	cmd.Flags().StringVar(&defaultVisibility, "default-visibility", "member_choice", "Default visibility (member_choice, team, public)")
 
 	return cmd
@@ -112,6 +113,7 @@ func newTeamCreateCommand() *cobra.Command {
 
 func newTeamListCommand() *cobra.Command {
 	var (
+		limit   int
 		dbURL   string
 		ownerID string
 	)
@@ -143,7 +145,7 @@ func newTeamListCommand() *cobra.Command {
 			var rows [][]string
 
 			if ownerID != "" {
-				teamList, err := teamSvc.ListTeamsByOwner(ctx, ownerID)
+				teamList, err := teamSvc.ListTeamsByOwner(ctx, ownerID, int32(limit))
 				if err != nil {
 					return fmt.Errorf("failed to list teams: %w", err)
 				}
@@ -154,7 +156,7 @@ func newTeamListCommand() *cobra.Command {
 				}
 			} else {
 				// List all teams — use ownerID="" to return all
-				teamList, err := teamSvc.ListTeamsByOwner(ctx, "")
+				teamList, err := teamSvc.ListTeamsByOwner(ctx, "", int32(limit))
 				if err != nil {
 					return fmt.Errorf("failed to list teams: %w", err)
 				}
@@ -171,6 +173,8 @@ func newTeamListCommand() *cobra.Command {
 
 	cmd.Flags().StringVar(&dbURL, "db-url", "", "Database URL")
 	cmd.Flags().StringVar(&ownerID, "owner-id", "", "Filter teams by owner user ID")
+
+	cmd.Flags().IntVar(&limit, "limit", 1000, "Maximum number of teams to return")
 
 	return cmd
 }
