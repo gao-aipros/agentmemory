@@ -366,13 +366,6 @@ func registerMemorySave(mcpServer *mcp.Server, svc *ServiceBundle) {
 
 		// Create memory entry directly (bypasses observation pipeline — explicit saves
 		// go straight to long-term memory, not through the observe→compress chain)
-		if svc.Pool == nil {
-			return jsonResult(map[string]interface{}{
-				"memory_id": uuid.New().String(),
-				"status":    "saved",
-				"note":      "in-memory mode (no database pool)",
-			})
-		}
 		queries := store.New(svc.Pool)
 		mem, err := queries.InsertMemory(ctx, store.InsertMemoryParams{
 			ID:         uuid.New().String(),
@@ -673,19 +666,26 @@ func registerMemoryLessonSave(mcpServer *mcp.Server, svc *ServiceBundle) {
 		if err := parseArguments(req, &a); err != nil {
 			return nil, err
 		}
-		// Lesson saving is handled via consolidation pipeline in MVP.
-		// This records an explicit lesson-type observation as a bridge.
-		input := service.RecordObservationInput{
-			SessionID:  "lesson",
-			OwnerType:  "user",
-			Type:       "lesson",
-			Title:      "Lesson: " + truncateStr(a.Content, 80),
-			Narrative:  a.Content,
-			Concepts:   a.Tags,
-			Importance:  func() *float64 { v := 0.7; return &v }(), // literal, not pointer deref
+		// Save lesson directly via InsertLesson (lessons go to lessons table,
+		// not through observe→compress which requires a valid session FK)
+		confidence := a.Confidence
+		if confidence == 0 {
+			confidence = 0.5
 		}
-
-		obs, err := svc.Observation.RecordObservation(ctx, input)
+		queries := store.New(svc.Pool)
+		var ctxPtr *string
+		if a.Context != "" {
+			ctxPtr = &a.Context
+		}
+		lesson, err := queries.InsertLesson(ctx, store.InsertLessonParams{
+			ID:         uuid.New().String(),
+			Content:    a.Content,
+			Context:    ctxPtr,
+			Confidence: confidence,
+			TeamID:     nil,
+			Visibility: "team",
+			Source:     "manual_save",
+		})
 		if err != nil {
 			return &mcp.CallToolResult{
 				IsError: true,
@@ -696,7 +696,7 @@ func registerMemoryLessonSave(mcpServer *mcp.Server, svc *ServiceBundle) {
 		}
 
 		return jsonResult(map[string]interface{}{
-			"observation_id": obs.ID,
+			"lesson_id": lesson.ID,
 			"status":         "saved",
 			"note":           "Lesson saved as observation. Full lesson extraction happens during consolidation.",
 		})
