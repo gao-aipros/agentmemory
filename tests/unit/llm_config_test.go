@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-
 // TestNewLLMService_LLMAPIKey_Used verifies that LLM_API_KEY alone
 // (without provider-specific env vars) works for the openai provider.
 func TestNewLLMService_LLMAPIKey_Used(t *testing.T) {

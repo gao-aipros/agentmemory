@@ -6,18 +6,14 @@ import (
 	"os"
 	"strings"
 
-	"github.com/agentmemory/agentmemory/internal/store"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/pgvector/pgvector-go"
 	"github.com/tmc/langchaingo/embeddings"
 	"github.com/tmc/langchaingo/llms/openai"
 )
 
-// EmbeddingService generates and stores vector embeddings for observations
+// EmbeddingService generates vector embeddings for observations
 // and compressed observations. Uses langchaingo embeddings.Embedder for
 // provider agnosticism.
 type EmbeddingService struct {
-	queries  *store.Queries
 	embedder embeddings.Embedder
 }
 
@@ -25,8 +21,7 @@ type EmbeddingService struct {
 // EMBEDDING_PROVIDER: "openai" (default, currently the only supported provider).
 // EMBEDDING_MODEL: the embedding model name (provider-specific default if unset).
 // OPENAI_API_KEY: required for OpenAI embeddings.
-// pool may be nil for testing provider creation only.
-func NewEmbeddingService(pool *pgxpool.Pool) (*EmbeddingService, error) {
+func NewEmbeddingService() (*EmbeddingService, error) {
 	provider := strings.ToLower(os.Getenv("EMBEDDING_PROVIDER"))
 	if provider == "" {
 		provider = "openai"
@@ -49,22 +44,15 @@ func NewEmbeddingService(pool *pgxpool.Pool) (*EmbeddingService, error) {
 	svc := &EmbeddingService{
 		embedder: embedder,
 	}
-	if pool != nil {
-		svc.queries = store.New(pool)
-	}
 	return svc, nil
 }
 
 // NewEmbeddingServiceWithEmbedder creates an EmbeddingService with a pre-built embedder.
 // Used in tests to inject mock embedders without requiring real API keys.
-func NewEmbeddingServiceWithEmbedder(pool *pgxpool.Pool, embedder embeddings.Embedder) *EmbeddingService {
-	svc := &EmbeddingService{
+func NewEmbeddingServiceWithEmbedder(embedder embeddings.Embedder) *EmbeddingService {
+	return &EmbeddingService{
 		embedder: embedder,
 	}
-	if pool != nil {
-		svc.queries = store.New(pool)
-	}
-	return svc
 }
 
 // Embedder returns the underlying langchaingo embeddings.Embedder (for testing/assertions).
@@ -78,32 +66,6 @@ func (s *EmbeddingService) GenerateEmbedding(ctx context.Context, text string) (
 		return nil, fmt.Errorf("embedding service not configured — set EMBEDDING_PROVIDER and required API key env vars")
 	}
 	return s.embedder.EmbedQuery(ctx, text)
-}
-
-// StoreObservationEmbedding inserts an embedding for a raw observation.
-func (s *EmbeddingService) StoreObservationEmbedding(ctx context.Context, observationID string, embedding []float32, model string) error {
-	if s.queries == nil {
-		return fmt.Errorf("embedding service has no database pool")
-	}
-	vec := pgvector.NewVector(embedding)
-	return s.queries.InsertEmbedding(ctx, store.InsertEmbeddingParams{
-		ObservationID: observationID,
-		Embedding:     &vec,
-		Model:         model,
-	})
-}
-
-// StoreCompressedEmbedding inserts an embedding for a compressed observation.
-func (s *EmbeddingService) StoreCompressedEmbedding(ctx context.Context, compressedID string, embedding []float32, model string) error {
-	if s.queries == nil {
-		return fmt.Errorf("embedding service has no database pool")
-	}
-	vec := pgvector.NewVector(embedding)
-	return s.queries.InsertCompressedEmbedding(ctx, store.InsertCompressedEmbeddingParams{
-		CompressedID: compressedID,
-		Embedding:     &vec,
-		Model:         model,
-	})
 }
 
 // resolveEmbeddingAPIKey returns the effective API key for embedding.

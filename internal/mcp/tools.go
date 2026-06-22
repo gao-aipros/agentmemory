@@ -47,7 +47,7 @@ func NewServiceBundle(pool *pgxpool.Pool) *ServiceBundle {
 		slog.Warn("LLM service not configured — MCP LLM tools disabled", "error", llmErr)
 		llmSvc = service.NewLLMServiceWithModel(nil)
 	}
-	embedSvc, embedErr := service.NewEmbeddingService(pool)
+	embedSvc, embedErr := service.NewEmbeddingService()
 	if embedErr != nil {
 		slog.Warn("Embedding service not configured — MCP semantic search disabled", "error", embedErr)
 		embedSvc = &service.EmbeddingService{}
@@ -337,11 +337,11 @@ func registerMemoryObserve(mcpServer *mcp.Server, svc *ServiceBundle) {
 
 func registerMemorySave(mcpServer *mcp.Server, svc *ServiceBundle) {
 	type args struct {
-		Content   string   `json:"content"`
-		Type      string   `json:"type,omitempty"`
-		Concepts  []string `json:"concepts,omitempty"`
-		Files     []string `json:"files,omitempty"`
-		Project   string   `json:"project,omitempty"`
+		Content  string   `json:"content"`
+		Type     string   `json:"type,omitempty"`
+		Concepts []string `json:"concepts,omitempty"`
+		Files    []string `json:"files,omitempty"`
+		Project  string   `json:"project,omitempty"`
 	}
 
 	mcpServer.AddTool(&mcp.Tool{
@@ -427,7 +427,7 @@ func registerMemoryRecall(mcpServer *mcp.Server, svc *ServiceBundle) {
 		}
 
 		userID := auth.GetUserIDFromContext(ctx)
-	result, err := svc.Recall.Recall(ctx, a.Query, a.Limit, a.Format, userID)
+		result, err := svc.Recall.Recall(ctx, a.Query, a.Limit, a.Format, userID)
 		if err != nil {
 			return &mcp.CallToolResult{
 				IsError: true,
@@ -640,11 +640,11 @@ func registerMemoryRecap(mcpServer *mcp.Server, svc *ServiceBundle) {
 
 func registerMemoryLessonSave(mcpServer *mcp.Server, svc *ServiceBundle) {
 	type args struct {
-		Content    string  `json:"content"`
-		Context    string  `json:"context,omitempty"`
-		Project    string  `json:"project,omitempty"`
+		Content    string   `json:"content"`
+		Context    string   `json:"context,omitempty"`
+		Project    string   `json:"project,omitempty"`
 		Tags       []string `json:"tags,omitempty"`
-		Confidence float64 `json:"confidence,omitempty"`
+		Confidence float64  `json:"confidence,omitempty"`
 	}
 
 	mcpServer.AddTool(&mcp.Tool{
@@ -697,8 +697,8 @@ func registerMemoryLessonSave(mcpServer *mcp.Server, svc *ServiceBundle) {
 
 		return jsonResult(map[string]interface{}{
 			"lesson_id": lesson.ID,
-			"status":         "saved",
-			"note":           "Lesson saved as observation. Full lesson extraction happens during consolidation.",
+			"status":    "saved",
+			"note":      "Lesson saved as observation. Full lesson extraction happens during consolidation.",
 		})
 	})
 }
@@ -993,12 +993,12 @@ func registerAuthCreateKey(mcpServer *mcp.Server, svc *ServiceBundle) {
 		}
 
 		return jsonResult(map[string]interface{}{
-			"key_id":    apiKey.ID,
-			"label":     apiKey.Label,
-			"full_key":  fullKey,
-			"prefix":    apiKey.ID[:8],
-			"status":    "created",
-			"warning":   "Store this key securely. The full key will not be shown again.",
+			"key_id":   apiKey.ID,
+			"label":    apiKey.Label,
+			"full_key": fullKey,
+			"prefix":   apiKey.ID[:8],
+			"status":   "created",
+			"warning":  "Store this key securely. The full key will not be shown again.",
 		})
 	})
 }
@@ -1166,7 +1166,7 @@ func registerMemoryNext(mcpServer *mcp.Server, svc *ServiceBundle) {
 
 func registerMemoryConsolidate(mcpServer *mcp.Server, svc *ServiceBundle) {
 	type args struct {
-		Tier    string `json:"tier,omitempty"`
+		Tier      string `json:"tier,omitempty"`
 		SessionID string `json:"session_id,omitempty"`
 	}
 
@@ -1252,7 +1252,7 @@ func registerMemoryReflect(mcpServer *mcp.Server, svc *ServiceBundle) {
 		InputSchema: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"project":     optStringProp("Filter by project"),
+				"project":      optStringProp("Filter by project"),
 				"max_clusters": numberProp("Max concept clusters to process (default 10, max 20)"),
 			},
 			"required": []string{},
@@ -1524,10 +1524,10 @@ func registerMemoryVisionSearch(mcpServer *mcp.Server, svc *ServiceBundle) {
 		InputSchema: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"query_text":       optStringProp("Text query for finding matching screenshots"),
-				"query_image_ref":  optStringProp("Absolute path to a stored image to match against"),
-				"session_id":       optStringProp("Filter to a single session"),
-				"top_k":            numberProp("Max results (default 10, max 50)"),
+				"query_text":      optStringProp("Text query for finding matching screenshots"),
+				"query_image_ref": optStringProp("Absolute path to a stored image to match against"),
+				"session_id":      optStringProp("Filter to a single session"),
+				"top_k":           numberProp("Max results (default 10, max 50)"),
 			},
 			"required": []string{},
 		},
@@ -1655,10 +1655,10 @@ func registerMemorySignalRead(mcpServer *mcp.Server, svc *ServiceBundle) {
 		InputSchema: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"agent_id":     stringProp("Agent to read messages for"),
-				"limit":        numberProp("Max messages (default 50)"),
-				"thread_id":    optStringProp("Filter by conversation thread"),
-				"unread_only":  optStringProp("Set to 'true' for unread only"),
+				"agent_id":    stringProp("Agent to read messages for"),
+				"limit":       numberProp("Max messages (default 50)"),
+				"thread_id":   optStringProp("Filter by conversation thread"),
+				"unread_only": optStringProp("Set to 'true' for unread only"),
 			},
 			"required": []string{"agent_id"},
 		},
@@ -1731,12 +1731,12 @@ func registerMemoryCheckpoint(mcpServer *mcp.Server, svc *ServiceBundle) {
 		InputSchema: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"operation":          stringProp("create, resolve, or list"),
-				"name":               optStringProp("Checkpoint name (for create)"),
-				"type":               optStringProp("Checkpoint type: ci, approval, deploy, external, timer"),
-				"checkpoint_id":      optStringProp("Checkpoint ID (for resolve)"),
-				"status":             optStringProp("passed or failed (for resolve)"),
-				"linked_action_ids":  optStringProp("Comma-separated action IDs this checkpoint gates (for create)"),
+				"operation":         stringProp("create, resolve, or list"),
+				"name":              optStringProp("Checkpoint name (for create)"),
+				"type":              optStringProp("Checkpoint type: ci, approval, deploy, external, timer"),
+				"checkpoint_id":     optStringProp("Checkpoint ID (for resolve)"),
+				"status":            optStringProp("passed or failed (for resolve)"),
+				"linked_action_ids": optStringProp("Comma-separated action IDs this checkpoint gates (for create)"),
 			},
 			"required": []string{"operation"},
 		},
@@ -1788,9 +1788,9 @@ func registerMemoryRoutineRun(mcpServer *mcp.Server, svc *ServiceBundle) {
 		InputSchema: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"routine_id":    stringProp("Routine template ID"),
-				"project":       optStringProp("Project context"),
-				"initiated_by":  optStringProp("Agent starting the run"),
+				"routine_id":   stringProp("Routine template ID"),
+				"project":      optStringProp("Project context"),
+				"initiated_by": optStringProp("Agent starting the run"),
 			},
 			"required": []string{"routine_id"},
 		},

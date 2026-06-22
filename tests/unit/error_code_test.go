@@ -35,9 +35,9 @@ func TestErrorResponseStructSerialization(t *testing.T) {
 	// Test the expected shape of error responses from writeError
 	// After fix, all error responses should include a "code" field
 	expectedPairs := []struct {
-		status   int
-		message  string
-		expCode  string
+		status  int
+		message string
+		expCode string
 	}{
 		{http.StatusBadRequest, "invalid JSON body", "BAD_REQUEST"},
 		{http.StatusUnauthorized, "authentication failed", "UNAUTHORIZED"},

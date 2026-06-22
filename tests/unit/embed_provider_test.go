@@ -26,7 +26,7 @@ func TestNewEmbeddingService_OpenAI(t *testing.T) {
 	os.Setenv("OPENAI_API_KEY", "test-key-for-unit-test")
 
 	// nil pool is fine — we just test provider creation, not DB operations
-	svc, err := service.NewEmbeddingService(nil)
+	svc, err := service.NewEmbeddingService()
 	require.NoError(t, err)
 	require.NotNil(t, svc)
 	assert.NotNil(t, svc.Embedder(), "Embedding embedder should not be nil")
@@ -38,7 +38,7 @@ func TestNewEmbeddingService_DefaultToOpenAI(t *testing.T) {
 	os.Setenv("OPENAI_API_KEY", "test-key-for-unit-test")
 	// EMBEDDING_PROVIDER unset → defaults to "openai"
 
-	svc, err := service.NewEmbeddingService(nil)
+	svc, err := service.NewEmbeddingService()
 	require.NoError(t, err)
 	require.NotNil(t, svc)
 	assert.NotNil(t, svc.Embedder(), "default embedder should not be nil")
@@ -50,7 +50,7 @@ func TestNewEmbeddingService_InvalidProvider(t *testing.T) {
 	os.Setenv("EMBEDDING_PROVIDER", "nonexistent-provider")
 	os.Setenv("OPENAI_API_KEY", "test-key-for-unit-test")
 
-	svc, err := service.NewEmbeddingService(nil)
+	svc, err := service.NewEmbeddingService()
 	assert.Error(t, err, "invalid embedding provider should return an error")
 	assert.Nil(t, svc)
 }
@@ -61,7 +61,7 @@ func TestNewEmbeddingService_MissingAPIKey(t *testing.T) {
 	os.Setenv("EMBEDDING_PROVIDER", "openai")
 	// OPENAI_API_KEY intentionally not set
 
-	svc, err := service.NewEmbeddingService(nil)
+	svc, err := service.NewEmbeddingService()
 	assert.Error(t, err, "missing API key should return an error")
 	assert.Nil(t, svc)
 }

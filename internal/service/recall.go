@@ -23,12 +23,12 @@ func NewRecallService(pool *pgxpool.Pool, embedSvc *EmbeddingService) *RecallSer
 
 // RecallResult is the output of a memory recall operation.
 type RecallResult struct {
-	Query       string
-	Format      string
-	Compact     []CompactResult `json:"compact,omitempty"`
-	Full        []FullResult    `json:"full,omitempty"`
-	Narrative   string          `json:"narrative,omitempty"`
-	TotalHits   int
+	Query     string
+	Format    string
+	Compact   []CompactResult `json:"compact,omitempty"`
+	Full      []FullResult    `json:"full,omitempty"`
+	Narrative string          `json:"narrative,omitempty"`
+	TotalHits int
 }
 
 // Recall performs the memory_recall operation.

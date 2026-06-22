@@ -15,9 +15,9 @@ import (
 
 func TestValidatePoolConfig_ValidConfigs(t *testing.T) {
 	tests := []struct {
-		name      string
-		maxConns  int32
-		minConns  int32
+		name     string
+		maxConns int32
+		minConns int32
 	}{
 		{"equal_max_and_min", 10, 10},
 		{"max_greater_than_min", 50, 5},
@@ -36,10 +36,10 @@ func TestValidatePoolConfig_ValidConfigs(t *testing.T) {
 
 func TestValidatePoolConfig_InvalidConfigs(t *testing.T) {
 	tests := []struct {
-		name      string
-		maxConns  int32
-		minConns  int32
-		wantErr   string
+		name     string
+		maxConns int32
+		minConns int32
+		wantErr  string
 	}{
 		{
 			name:     "max_zero",

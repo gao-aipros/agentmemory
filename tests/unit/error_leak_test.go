@@ -32,25 +32,25 @@ func TestErrorResponsesUseGenericMessages(t *testing.T) {
 
 	// Exercise endpoints that return error responses
 	tests := []struct {
-		method   string
-		path     string
-		body     string
-		minMap   map[string]string // minimum expected keys
-		forbiddenPatterns []string    // patterns that MUST NOT appear in body
+		method            string
+		path              string
+		body              string
+		minMap            map[string]string // minimum expected keys
+		forbiddenPatterns []string          // patterns that MUST NOT appear in body
 	}{
 		{
 			method: "POST", path: "/v1/api/observe",
-			body: ``,
+			body:              ``,
 			forbiddenPatterns: []string{"pgx", "SQLSTATE", "connection refused", "scan", "Scan"},
 		},
 		{
 			method: "POST", path: "/v1/api/session/end",
-			body: ``,
+			body:              ``,
 			forbiddenPatterns: []string{"pgx", "SQLSTATE", "connection refused", "scan", "Scan"},
 		},
 		{
 			method: "DELETE", path: "/v1/auth/keys/test-key",
-			body: ``,
+			body:              ``,
 			forbiddenPatterns: []string{"pgx", "SQLSTATE", "connection refused", "scan", "Scan"},
 		},
 	}

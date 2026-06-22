@@ -251,4 +251,3 @@ func TestBenchStartupSequentialInit(t *testing.T) {
 	assert.Less(t, initTime, 10*time.Second,
 		"sequential init should be <10s, took %v", initTime)
 }
-

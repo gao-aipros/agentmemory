@@ -17,6 +17,7 @@ import (
 // The API key is resolved with this priority:
 //  1. LLM_API_KEY (unified, provider-agnostic)
 //  2. OPENAI_API_KEY (openai provider) or ANTHROPIC_API_KEY (anthropic provider)
+//
 // LLM_BASE_URL sets a custom base URL for either provider.
 type LLMService struct {
 	model llms.Model

@@ -19,11 +19,11 @@ import (
 
 // mockDBTX implements store.DBTX for testing.
 type mockDBTX struct {
-	execResult      pgconn.CommandTag
-	execErr         error
-	queryRows       pgx.Rows
-	queryErr        error
-	queryRowResult  pgx.Row
+	execResult     pgconn.CommandTag
+	execErr        error
+	queryRows      pgx.Rows
+	queryErr       error
+	queryRowResult pgx.Row
 }
 
 func (m *mockDBTX) Exec(_ context.Context, _ string, _ ...interface{}) (pgconn.CommandTag, error) {

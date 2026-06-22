@@ -20,4 +20,3 @@ type FullResult struct {
 	Timestamp   string
 	OwnerUserID string
 }
-

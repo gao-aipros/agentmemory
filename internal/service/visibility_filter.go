@@ -8,9 +8,9 @@ import (
 // It filters collections of observations and memories based on the
 // authenticated user's identity and team membership.
 type VisibilityFilter struct {
-	userID      string
-	userTeamID  string
-	queries     *store.Queries
+	userID     string
+	userTeamID string
+	queries    *store.Queries
 }
 
 // NewVisibilityFilter creates a new VisibilityFilter for the given user.

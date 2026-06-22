@@ -14,7 +14,7 @@ import (
 // TestTeamLifecycle_CreateTeam tests team creation through the store layer,
 // verifying the team is persisted with the correct owner and metadata.
 func TestTeamLifecycle_CreateTeam(t *testing.T) {
-// Parallel removed — shared container requires sequential execution
+	// Parallel removed — shared container requires sequential execution
 
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)
@@ -67,7 +67,7 @@ func TestTeamLifecycle_CreateTeam(t *testing.T) {
 // TestTeamLifecycle_AddMember tests adding members to a team and verifying
 // the membership is persisted correctly.
 func TestTeamLifecycle_AddMember(t *testing.T) {
-// Parallel removed — shared container requires sequential execution
+	// Parallel removed — shared container requires sequential execution
 
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)
@@ -137,7 +137,7 @@ func TestTeamLifecycle_AddMember(t *testing.T) {
 
 // TestTeamLifecycle_RemoveMember tests removing a member from a team.
 func TestTeamLifecycle_RemoveMember(t *testing.T) {
-// Parallel removed — shared container requires sequential execution
+	// Parallel removed — shared container requires sequential execution
 
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)
@@ -205,7 +205,7 @@ func TestTeamLifecycle_RemoveMember(t *testing.T) {
 
 // TestTeamLifecycle_Rejoin tests that a member who left can rejoin the team.
 func TestTeamLifecycle_Rejoin(t *testing.T) {
-// Parallel removed — shared container requires sequential execution
+	// Parallel removed — shared container requires sequential execution
 
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)
@@ -271,7 +271,7 @@ func TestTeamLifecycle_Rejoin(t *testing.T) {
 // TestTeamLifecycle_GetUserTeam verifies the GetUserTeam query returns
 // the correct team for a user.
 func TestTeamLifecycle_GetUserTeam(t *testing.T) {
-// Parallel removed — shared container requires sequential execution
+	// Parallel removed — shared container requires sequential execution
 
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)
@@ -336,7 +336,7 @@ func TestTeamLifecycle_GetUserTeam(t *testing.T) {
 // so direct store queries can create multiple memberships. The service layer
 // enforces the constraint by checking GetUserTeam before adding a member.
 func TestTeamLifecycle_OneTeamPerUser(t *testing.T) {
-// Parallel removed — shared container requires sequential execution
+	// Parallel removed — shared container requires sequential execution
 
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)

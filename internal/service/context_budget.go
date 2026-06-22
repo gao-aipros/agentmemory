@@ -9,8 +9,8 @@ import (
 // ContextBudget defines the token budget for context injection.
 // Total budget is 1500 tokens: ~1100 for source content, ~400 for formatting and recall IDs.
 type ContextBudget struct {
-	TotalTokens   int
-	SourceTokens  int
+	TotalTokens    int
+	SourceTokens   int
 	OverheadTokens int
 }
 
@@ -26,8 +26,8 @@ type BucketAllocation struct {
 // DefaultContextBudget returns the standard 1500-token budget.
 func DefaultContextBudget() ContextBudget {
 	return ContextBudget{
-		TotalTokens:   1500,
-		SourceTokens:  1100,
+		TotalTokens:    1500,
+		SourceTokens:   1100,
 		OverheadTokens: 400,
 	}
 }

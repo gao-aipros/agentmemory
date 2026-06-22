@@ -211,10 +211,10 @@ func TestTeamModes_MemberChoice_HonorsDefaultVisibility(t *testing.T) {
 		{"share_true_public", true, "public", true},
 		{"share_true_member_choice", true, "member_choice", true},
 		{"share_false_private", false, "private", false},
-		{"share_false_team", false, "team", true},             // team default overrides
-		{"share_false_public", false, "public", true},          // public default overrides
+		{"share_false_team", false, "team", true},                    // team default overrides
+		{"share_false_public", false, "public", true},                // public default overrides
 		{"share_false_member_choice", false, "member_choice", false}, // no override
-		{"share_false_empty", false, "", false},                // empty defaults to private
+		{"share_false_empty", false, "", false},                      // empty defaults to private
 	}
 
 	for _, tt := range tests {

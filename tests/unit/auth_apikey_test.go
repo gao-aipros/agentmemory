@@ -234,8 +234,8 @@ func TestAPIKey_KeyLengthIsSufficient(t *testing.T) {
 
 func TestAPIKey_ShorterKeysAreDetected(t *testing.T) {
 	shortKeys := []string{
-		"ak_00",                                     // 1 byte
-		"ak_00112233445566778899aabbccddeeff",       // 16 bytes (128 bits)
+		"ak_00",                               // 1 byte
+		"ak_00112233445566778899aabbccddeeff", // 16 bytes (128 bits)
 		"ak_00112233445566778899aabbccddeeff001122", // 24 bytes (192 bits)
 	}
 

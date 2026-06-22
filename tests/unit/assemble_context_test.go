@@ -53,7 +53,9 @@ func TestAssembleContextExists(t *testing.T) {
 	// (we can't call it with nil pool without panicking, but the method
 	// must be accessible via the interface)
 	assert.NotNil(t, svc)
-	assert.Implements(t, (*interface{ AssembleContext(context.Context, string) (*service.AssembledContext, error) })(nil), svc)
+	assert.Implements(t, (*interface {
+		AssembleContext(context.Context, string) (*service.AssembledContext, error)
+	})(nil), svc)
 }
 
 // TestAssembleContextFiveHelpersExist verifies that all five gather helper

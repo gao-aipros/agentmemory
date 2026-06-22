@@ -12,15 +12,15 @@ import (
 
 // CrystalResult is the output of crystallizing a set of completed actions.
 type CrystalResult struct {
-	ID             string    `json:"id"`
-	ActionIDs      []string  `json:"action_ids"`
-	Narrative      string    `json:"narrative"`
-	KeyOutcomes    string    `json:"key_outcomes"`
-	FilesAffected  []string  `json:"files_affected"`
-	Lessons        []string  `json:"lessons"`
-	Project        string    `json:"project"`
-	SessionID      string    `json:"session_id"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID            string    `json:"id"`
+	ActionIDs     []string  `json:"action_ids"`
+	Narrative     string    `json:"narrative"`
+	KeyOutcomes   string    `json:"key_outcomes"`
+	FilesAffected []string  `json:"files_affected"`
+	Lessons       []string  `json:"lessons"`
+	Project       string    `json:"project"`
+	SessionID     string    `json:"session_id"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // CrystallizeService compresses completed action chains into compact
