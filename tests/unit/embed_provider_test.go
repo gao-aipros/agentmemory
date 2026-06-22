@@ -12,6 +12,9 @@ import (
 func clearEmbedEnv() {
 	os.Unsetenv("EMBEDDING_PROVIDER")
 	os.Unsetenv("EMBEDDING_MODEL")
+	os.Unsetenv("EMBEDDING_API_KEY")
+	os.Unsetenv("EMBEDDING_BASE_URL")
+	os.Unsetenv("LLM_API_KEY")
 	os.Unsetenv("OPENAI_API_KEY")
 }
 

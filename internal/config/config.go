@@ -30,12 +30,18 @@ type Config struct {
 	LogLevel string
 
 	// LLM / Embedding providers
-	OpenAIAPIKey      string
-	AnthropicAPIKey   string
+	// Deprecated: Use LLMAPIKey instead.
+	OpenAIAPIKey  string
+	// Deprecated: Use LLMAPIKey instead.
+	AnthropicAPIKey string
 	EmbeddingProvider string
 	EmbeddingModel    string
 	LLMProvider       string
 	LLMModel          string
+	LLMAPIKey         string
+	LLMBaseURL        string
+	EmbeddingAPIKey   string
+	EmbeddingBaseURL  string
 }
 
 // Load reads configuration from environment variables with sensible defaults.
@@ -56,6 +62,10 @@ func Load() *Config {
 		EmbeddingModel:    getEnv("EMBEDDING_MODEL", ""),
 		LLMProvider:       getEnv("LLM_PROVIDER", ""),
 		LLMModel:          getEnv("LLM_MODEL", ""),
+		LLMAPIKey:         getEnv("LLM_API_KEY", ""),
+		LLMBaseURL:        getEnv("LLM_BASE_URL", ""),
+		EmbeddingAPIKey:   getEnv("EMBEDDING_API_KEY", ""),
+		EmbeddingBaseURL:  getEnv("EMBEDDING_BASE_URL", ""),
 	}
 }
 

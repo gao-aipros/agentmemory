@@ -106,9 +106,35 @@ func (s *EmbeddingService) StoreCompressedEmbedding(ctx context.Context, compres
 	})
 }
 
+// resolveEmbeddingAPIKey returns the effective API key for embedding.
+// Priority: EMBEDDING_API_KEY > LLM_API_KEY > OPENAI_API_KEY > empty string.
+func resolveEmbeddingAPIKey() string {
+	if key := os.Getenv("EMBEDDING_API_KEY"); key != "" {
+		return key
+	}
+	if key := os.Getenv("LLM_API_KEY"); key != "" {
+		return key
+	}
+	return os.Getenv("OPENAI_API_KEY")
+}
+
+// resolveEmbeddingBaseURL returns the EMBEDDING_BASE_URL environment variable,
+// or empty if not set.
+func resolveEmbeddingBaseURL() string {
+	return os.Getenv("EMBEDDING_BASE_URL")
+}
+
 // newOpenAIEmbedder creates an OpenAI embedder from environment variables.
 func newOpenAIEmbedder() (embeddings.Embedder, error) {
 	opts := []openai.Option{}
+
+	if token := resolveEmbeddingAPIKey(); token != "" {
+		opts = append(opts, openai.WithToken(token))
+	}
+
+	if baseURL := resolveEmbeddingBaseURL(); baseURL != "" {
+		opts = append(opts, openai.WithBaseURL(baseURL))
+	}
 
 	if model := os.Getenv("EMBEDDING_MODEL"); model != "" {
 		opts = append(opts, openai.WithEmbeddingModel(model))
