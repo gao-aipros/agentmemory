@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -50,6 +51,7 @@ func (s *ContextService) AssembleContext(ctx context.Context, userID string) (*A
 	// 1. Gather relevant observations from recent sessions
 	observations, err := s.gatherObservations(ctx, userID)
 	if err != nil {
+		slog.Warn("failed to gather observations", "user_id", userID, "error", err)
 		observations = ""
 	}
 	assembled.Observations = observations
@@ -57,6 +59,7 @@ func (s *ContextService) AssembleContext(ctx context.Context, userID string) (*A
 	// 2. Gather session recap from recent session summaries
 	recap, err := s.gatherRecap(ctx, userID)
 	if err != nil {
+		slog.Warn("failed to gather recap", "user_id", userID, "error", err)
 		recap = ""
 	}
 	assembled.Recap = recap
@@ -64,6 +67,7 @@ func (s *ContextService) AssembleContext(ctx context.Context, userID string) (*A
 	// 3. Gather relevant lessons
 	lessons, err := s.gatherLessons(ctx, userID)
 	if err != nil {
+		slog.Warn("failed to gather lessons", "user_id", userID, "error", err)
 		lessons = ""
 	}
 	assembled.Lessons = lessons
@@ -71,6 +75,7 @@ func (s *ContextService) AssembleContext(ctx context.Context, userID string) (*A
 	// 4. Gather graph neighbors
 	graph, err := s.gatherGraphNeighbors(ctx, userID)
 	if err != nil {
+		slog.Warn("failed to gather graph neighbors", "user_id", userID, "error", err)
 		graph = ""
 	}
 	assembled.Graph = graph
@@ -78,6 +83,7 @@ func (s *ContextService) AssembleContext(ctx context.Context, userID string) (*A
 	// 5. Gather working memory from slots
 	workingMemory, err := s.gatherWorkingMemory(ctx)
 	if err != nil {
+		slog.Warn("failed to gather working memory", "user_id", userID, "error", err)
 		workingMemory = ""
 	}
 	assembled.WorkingMemory = workingMemory

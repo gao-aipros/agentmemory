@@ -76,9 +76,18 @@ func (h *HealthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // writeJSONStatus writes a JSON response with the given status code.
+// Marshal happens BEFORE WriteHeader so a failed encode does not leave a
+// committed status with a truncated body.
 func writeJSONStatus(w http.ResponseWriter, status int, v interface{}) {
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(v); err != nil {
+	buf, err := json.Marshal(v)
+	if err != nil {
 		slog.Error("failed to write JSON response", "error", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"status":"error","error":"internal server error"}`))
+		return
 	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	w.Write(buf)
 }

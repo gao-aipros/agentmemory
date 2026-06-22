@@ -52,43 +52,31 @@ type observeResponse struct {
 // HandleObserve handles POST /v1/api/observe — record a new observation.
 func (h *RESTHandler) HandleObserve(w http.ResponseWriter, r *http.Request) {
 	if h.obsSvc == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-			"error": "observation service not configured",
-		})
+		writeError(w, http.StatusServiceUnavailable, "observation service not configured")
 		return
 	}
 
 	var req observeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "invalid JSON body",
-		})
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 
 	// Validate required fields
 	if req.Type == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "type is required",
-		})
+		writeError(w, http.StatusBadRequest, "type is required")
 		return
 	}
 	if req.Title == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "title is required",
-		})
+		writeError(w, http.StatusBadRequest, "title is required")
 		return
 	}
 	if req.Narrative == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "narrative is required",
-		})
+		writeError(w, http.StatusBadRequest, "narrative is required")
 		return
 	}
 	if req.SessionID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "session_id is required",
-		})
+		writeError(w, http.StatusBadRequest, "session_id is required")
 		return
 	}
 
@@ -127,9 +115,7 @@ func (h *RESTHandler) HandleObserve(w http.ResponseWriter, r *http.Request) {
 	obs, err := h.obsSvc.RecordObservation(r.Context(), input)
 	if err != nil {
 		slog.Warn("failed to record observation", "error", err)
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": err.Error(),
-		})
+		writeError(w, http.StatusBadRequest, "observation failed")
 		return
 	}
 
@@ -153,32 +139,24 @@ type endSessionResponse struct {
 // HandleEndSession handles POST /v1/api/session/end — end a session and trigger the memory pipeline.
 func (h *RESTHandler) HandleEndSession(w http.ResponseWriter, r *http.Request) {
 	if h.sessionEndH == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-			"error": "session end handler not configured",
-		})
+		writeError(w, http.StatusServiceUnavailable, "session end handler not configured")
 		return
 	}
 
 	var req endSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "invalid JSON body",
-		})
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 
 	if req.SessionID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "session_id is required",
-		})
+		writeError(w, http.StatusBadRequest, "session_id is required")
 		return
 	}
 
 	if err := h.sessionEndH.HandleSessionEnd(r.Context(), req.SessionID); err != nil {
 		slog.Warn("failed to end session", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{
-			"error": err.Error(),
-		})
+		writeError(w, http.StatusInternalServerError, "failed to end session")
 		return
 	}
 
@@ -207,22 +185,16 @@ type commitResponse struct {
 func (h *RESTHandler) HandleCommitSession(w http.ResponseWriter, r *http.Request) {
 	var req commitRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "invalid JSON body",
-		})
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 
 	if req.SessionID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "session_id is required",
-		})
+		writeError(w, http.StatusBadRequest, "session_id is required")
 		return
 	}
 	if req.SHA == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "sha is required",
-		})
+		writeError(w, http.StatusBadRequest, "sha is required")
 		return
 	}
 
@@ -241,11 +213,57 @@ func (h *RESTHandler) HandleCommitSession(w http.ResponseWriter, r *http.Request
 	})
 }
 
+// ErrorResponse is the standard error response body for all REST API endpoints.
+type ErrorResponse struct {
+	Error string `json:"error"`
+	Code  string `json:"code"`
+}
+
+// httpStatusToCode maps an HTTP status code to an API error code string.
+func httpStatusToCode(status int) string {
+	switch status {
+	case http.StatusBadRequest:
+		return "BAD_REQUEST"
+	case http.StatusUnauthorized:
+		return "UNAUTHORIZED"
+	case http.StatusForbidden:
+		return "FORBIDDEN"
+	case http.StatusNotFound:
+		return "NOT_FOUND"
+	case http.StatusConflict:
+		return "CONFLICT"
+	case http.StatusTooManyRequests:
+		return "RATE_LIMITED"
+	case http.StatusInternalServerError:
+		return "INTERNAL_ERROR"
+	case http.StatusServiceUnavailable:
+		return "SERVICE_UNAVAILABLE"
+	default:
+		return "INTERNAL_ERROR"
+	}
+}
+
+// writeError writes a standard error response with both "error" and "code" fields.
+func writeError(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, ErrorResponse{
+		Error: message,
+		Code:  httpStatusToCode(status),
+	})
+}
+
 // writeJSON writes a JSON response with the given status code.
+// Marshal happens BEFORE WriteHeader so a failed encode does not leave a
+// committed status with a truncated body.
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
+	buf, err := json.Marshal(v)
+	if err != nil {
+		slog.Error("failed to encode JSON response", "error", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"internal server error","code":"INTERNAL_ERROR"}`))
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(v); err != nil {
-		slog.Error("failed to encode JSON response", "error", err)
-	}
+	w.Write(buf)
 }
