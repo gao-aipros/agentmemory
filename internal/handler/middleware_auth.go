@@ -28,10 +28,7 @@ func AuthMiddleware(pool *pgxpool.Pool) func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token := r.Header.Get("Authorization")
 			if token == "" {
-				writeJSON(w, http.StatusUnauthorized, map[string]string{
-					"error": "unauthorized",
-					"message": "authentication required",
-				})
+				writeError(w, http.StatusUnauthorized, "authentication required")
 				return
 			}
 
@@ -43,10 +40,7 @@ func AuthMiddleware(pool *pgxpool.Pool) func(next http.Handler) http.Handler {
 
 			jwtSecret, jwtSecretErr := config.GetJWTSecret()
 			if jwtSecretErr != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{
-					"error": "server configuration error",
-					"message": "authentication is not configured",
-				})
+				writeError(w, http.StatusInternalServerError, "authentication is not configured")
 				return
 			}
 
@@ -62,10 +56,7 @@ func AuthMiddleware(pool *pgxpool.Pool) func(next http.Handler) http.Handler {
 			}
 
 			if err != nil {
-				writeJSON(w, http.StatusUnauthorized, map[string]string{
-					"error": "unauthorized",
-					"message": err.Error(),
-				})
+				writeError(w, http.StatusUnauthorized, "authentication failed")
 				return
 			}
 
@@ -88,10 +79,7 @@ func RequireSessionToken(next http.Handler) http.Handler {
 
 		// If the token looks like an API key, reject it
 		if strings.HasPrefix(token, auth.APIKeyPrefix) {
-			writeJSON(w, http.StatusForbidden, map[string]string{
-				"error": "forbidden",
-				"message": "API keys are not allowed for this endpoint; use a session token",
-			})
+			writeError(w, http.StatusForbidden, "API keys are not allowed for this endpoint; use a session token")
 			return
 		}
 

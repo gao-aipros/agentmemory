@@ -122,9 +122,7 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Verify authentication — must be a session token (not API key)
 	userID := GetUserIDFromContext(r.Context())
 	if userID == "" {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{
-			"error": "authentication required",
-		})
+		writeError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
 
@@ -134,9 +132,7 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if token != "" {
 		token = token[len("Bearer "):]
 		if len(token) >= len(auth.APIKeyPrefix) && token[:len(auth.APIKeyPrefix)] == auth.APIKeyPrefix {
-			writeJSON(w, http.StatusForbidden, map[string]string{
-				"error": "API keys are not allowed for WebSocket; use a session token",
-			})
+			writeError(w, http.StatusForbidden, "API keys are not allowed for WebSocket; use a session token")
 			return
 		}
 	}

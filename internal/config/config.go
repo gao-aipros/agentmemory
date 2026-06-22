@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"time"
@@ -76,6 +77,8 @@ func getEnvInt(key string, fallback int) int {
 	}
 	v, err := strconv.Atoi(s)
 	if err != nil {
+		slog.Warn("failed to parse int env var, using fallback",
+			"key", key, "value", s, "error", err)
 		return fallback
 	}
 	return v
@@ -90,6 +93,8 @@ func getEnvBool(key string, fallback bool) bool {
 	}
 	v, err := strconv.ParseBool(s)
 	if err != nil {
+		slog.Warn("failed to parse bool env var, using fallback",
+			"key", key, "value", s, "error", err)
 		return fallback
 	}
 	return v
@@ -114,6 +119,8 @@ func getEnvDuration(key string, fallback time.Duration) time.Duration {
 	}
 	v, err := time.ParseDuration(s)
 	if err != nil {
+		slog.Warn("failed to parse duration env var, using fallback",
+			"key", key, "value", s, "error", err)
 		return fallback
 	}
 	return v

@@ -53,16 +53,12 @@ type userResponse struct {
 func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "invalid JSON body",
-		})
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 
 	if req.Email == "" || req.Password == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "email and password are required",
-		})
+		writeError(w, http.StatusBadRequest, "email and password are required")
 		return
 	}
 
@@ -70,33 +66,25 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	user, err := h.userSvc.GetUserByEmail(r.Context(), req.Email)
 	if err != nil {
 		slog.Warn("login failed: user not found", "email", req.Email)
-		writeJSON(w, http.StatusUnauthorized, map[string]string{
-			"error": "invalid credentials",
-		})
+		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
 
 	// Validate password
 	if !auth.CheckPassword(user.PasswordHash, req.Password) {
 		slog.Warn("login failed: invalid password", "email", req.Email)
-		writeJSON(w, http.StatusUnauthorized, map[string]string{
-			"error": "invalid credentials",
-		})
+		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
 
 	// Check TOTP if enabled
 	if user.TotpEnabled {
 		if req.TOTPCode == "" {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{
-				"error": "TOTP code required",
-			})
+			writeError(w, http.StatusUnauthorized, "TOTP code required")
 			return
 		}
 		if user.TotpSecret == nil || !auth.ValidateTOTP(*user.TotpSecret, req.TOTPCode) {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{
-				"error": "invalid TOTP code",
-			})
+			writeError(w, http.StatusUnauthorized, "invalid TOTP code")
 			return
 		}
 	}
@@ -104,9 +92,7 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	// Validate JWT secret is configured
 	if h.cfg.JWTSecret == "" {
 		slog.Error("JWT secret not configured")
-		writeJSON(w, http.StatusInternalServerError, map[string]string{
-			"error": "authentication configuration error",
-		})
+		writeError(w, http.StatusInternalServerError, "authentication configuration error")
 		return
 	}
 
@@ -114,9 +100,7 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	token, err := auth.GenerateToken(user.ID, h.cfg.JWTExpiry, h.cfg.JWTSecret)
 	if err != nil {
 		slog.Error("failed to generate JWT", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{
-			"error": "failed to generate token",
-		})
+		writeError(w, http.StatusInternalServerError, "failed to generate token")
 		return
 	}
 
@@ -140,34 +124,26 @@ func (h *AuthHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		Name     string `json:"name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "invalid JSON body",
-		})
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 
 	if req.Email == "" || req.Password == "" || req.Name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "email, password, and name are required",
-		})
+		writeError(w, http.StatusBadRequest, "email, password, and name are required")
 		return
 	}
 
 	user, err := h.userSvc.CreateUser(r.Context(), req.Email, req.Password, req.Name)
 	if err != nil {
 		slog.Warn("registration failed", "error", err)
-		writeJSON(w, http.StatusConflict, map[string]string{
-			"error": "registration failed",
-		})
+		writeError(w, http.StatusConflict, "registration failed")
 		return
 	}
 
 	// Validate JWT secret is configured
 	if h.cfg.JWTSecret == "" {
 		slog.Error("JWT secret not configured")
-		writeJSON(w, http.StatusInternalServerError, map[string]string{
-			"error": "authentication configuration error",
-		})
+		writeError(w, http.StatusInternalServerError, "authentication configuration error")
 		return
 	}
 
@@ -175,9 +151,7 @@ func (h *AuthHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	token, err := auth.GenerateToken(user.ID, h.cfg.JWTExpiry, h.cfg.JWTSecret)
 	if err != nil {
 		slog.Error("failed to generate JWT", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{
-			"error": "failed to generate token",
-		})
+		writeError(w, http.StatusInternalServerError, "failed to generate token")
 		return
 	}
 
@@ -197,17 +171,13 @@ func (h *AuthHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) HandleGetMe(w http.ResponseWriter, r *http.Request) {
 	userID := GetUserIDFromContext(r.Context())
 	if userID == "" {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{
-			"error": "not authenticated",
-		})
+		writeError(w, http.StatusUnauthorized, "not authenticated")
 		return
 	}
 
 	user, err := h.userSvc.GetUser(r.Context(), userID)
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{
-			"error": "user not found",
-		})
+		writeError(w, http.StatusNotFound, "user not found")
 		return
 	}
 
@@ -248,18 +218,14 @@ type apiKeyResponse struct {
 func (h *AuthHandler) HandleListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	userID := GetUserIDFromContext(r.Context())
 	if userID == "" {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{
-			"error": "not authenticated",
-		})
+		writeError(w, http.StatusUnauthorized, "not authenticated")
 		return
 	}
 
 	keys, err := h.userSvc.ListAPIKeys(r.Context(), userID)
 	if err != nil {
 		slog.Error("failed to list API keys", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{
-			"error": "failed to list API keys",
-		})
+		writeError(w, http.StatusInternalServerError, "failed to list API keys")
 		return
 	}
 
@@ -304,24 +270,18 @@ type createAPIKeyResponse struct {
 func (h *AuthHandler) HandleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	userID := GetUserIDFromContext(r.Context())
 	if userID == "" {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{
-			"error": "not authenticated",
-		})
+		writeError(w, http.StatusUnauthorized, "not authenticated")
 		return
 	}
 
 	var req createAPIKeyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "invalid JSON body",
-		})
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 
 	if req.Label == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "label is required",
-		})
+		writeError(w, http.StatusBadRequest, "label is required")
 		return
 	}
 
@@ -329,9 +289,7 @@ func (h *AuthHandler) HandleCreateAPIKey(w http.ResponseWriter, r *http.Request)
 	apiKey, fullKey, err := h.userSvc.CreateAPIKey(r.Context(), userID, req.Label, req.ExpiresAt)
 	if err != nil {
 		slog.Error("failed to create API key", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{
-			"error": "failed to create API key",
-		})
+		writeError(w, http.StatusInternalServerError, "failed to create API key")
 		return
 	}
 
@@ -347,25 +305,19 @@ func (h *AuthHandler) HandleCreateAPIKey(w http.ResponseWriter, r *http.Request)
 func (h *AuthHandler) HandleDeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 	userID := GetUserIDFromContext(r.Context())
 	if userID == "" {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{
-			"error": "not authenticated",
-		})
+		writeError(w, http.StatusUnauthorized, "not authenticated")
 		return
 	}
 
 	keyID := chi.URLParam(r, "key_id")
 	if keyID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "key_id is required",
-		})
+		writeError(w, http.StatusBadRequest, "key_id is required")
 		return
 	}
 
 	if err := h.userSvc.DeleteAPIKey(r.Context(), userID, keyID); err != nil {
 		slog.Error("failed to delete API key", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{
-			"error": err.Error(),
-		})
+		writeError(w, http.StatusInternalServerError, "failed to delete API key")
 		return
 	}
 
