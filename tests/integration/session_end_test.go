@@ -98,7 +98,10 @@ func TestSessionEndTriggersPipeline(t *testing.T) {
 	var memories []store.Memory
 	for i := 0; i < 5; i++ {
 		time.Sleep(1 * time.Second)
-		memories, err = queries.ListMemoriesByOwner(ctx, &userID)
+		memories, err = queries.ListMemoriesByOwner(ctx, store.ListMemoriesByOwnerParams{
+				OwnerUserID: &userID,
+				Limit:       50,
+			})
 		if err == nil && len(memories) > 0 {
 			break
 		}
