@@ -34,6 +34,9 @@ type CompressedObservation struct {
 	CompressedText string
 	Concepts       []string
 	CreatedAt      pgtype.Timestamptz
+	OwnerType      string
+	OwnerUserID    *string
+	OwnerTeamID    *string
 }
 
 type GraphEdge struct {
@@ -64,6 +67,7 @@ type Lesson struct {
 	Source           string
 	CreatedAt        pgtype.Timestamptz
 	LastReinforcedAt pgtype.Timestamptz
+	OwnerUserID      *string
 }
 
 type LessonReinforcement struct {
@@ -133,6 +137,9 @@ type SessionSummary struct {
 	SummaryText string
 	Concepts    []string
 	CreatedAt   pgtype.Timestamptz
+	OwnerType   string
+	OwnerUserID *string
+	OwnerTeamID *string
 }
 
 type Team struct {

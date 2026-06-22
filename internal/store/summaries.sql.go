@@ -10,7 +10,7 @@ import (
 )
 
 const getSessionSummary = `-- name: GetSessionSummary :one
-SELECT id, session_id, visibility, summary_text, concepts, created_at FROM session_summaries WHERE session_id = $1
+SELECT id, session_id, visibility, summary_text, concepts, created_at, owner_type, owner_user_id, owner_team_id FROM session_summaries WHERE session_id = $1
 `
 
 func (q *Queries) GetSessionSummary(ctx context.Context, sessionID string) (SessionSummary, error) {
@@ -23,12 +23,15 @@ func (q *Queries) GetSessionSummary(ctx context.Context, sessionID string) (Sess
 		&i.SummaryText,
 		&i.Concepts,
 		&i.CreatedAt,
+		&i.OwnerType,
+		&i.OwnerUserID,
+		&i.OwnerTeamID,
 	)
 	return i, err
 }
 
 const listSummariesBySession = `-- name: ListSummariesBySession :many
-SELECT id, session_id, visibility, summary_text, concepts, created_at FROM session_summaries WHERE session_id = $1 ORDER BY created_at DESC
+SELECT id, session_id, visibility, summary_text, concepts, created_at, owner_type, owner_user_id, owner_team_id FROM session_summaries WHERE session_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListSummariesBySession(ctx context.Context, sessionID string) ([]SessionSummary, error) {
@@ -47,6 +50,9 @@ func (q *Queries) ListSummariesBySession(ctx context.Context, sessionID string) 
 			&i.SummaryText,
 			&i.Concepts,
 			&i.CreatedAt,
+			&i.OwnerType,
+			&i.OwnerUserID,
+			&i.OwnerTeamID,
 		); err != nil {
 			return nil, err
 		}
@@ -59,7 +65,7 @@ func (q *Queries) ListSummariesBySession(ctx context.Context, sessionID string) 
 }
 
 const listSummariesByUserID = `-- name: ListSummariesByUserID :many
-SELECT ss.id, ss.session_id, ss.visibility, ss.summary_text, ss.concepts, ss.created_at FROM session_summaries ss
+SELECT ss.id, ss.session_id, ss.visibility, ss.summary_text, ss.concepts, ss.created_at, ss.owner_type, ss.owner_user_id, ss.owner_team_id FROM session_summaries ss
 JOIN sessions s ON ss.session_id = s.id
 WHERE s.user_id = $1
 ORDER BY ss.created_at DESC
@@ -87,6 +93,9 @@ func (q *Queries) ListSummariesByUserID(ctx context.Context, arg ListSummariesBy
 			&i.SummaryText,
 			&i.Concepts,
 			&i.CreatedAt,
+			&i.OwnerType,
+			&i.OwnerUserID,
+			&i.OwnerTeamID,
 		); err != nil {
 			return nil, err
 		}
@@ -105,7 +114,7 @@ ON CONFLICT (session_id) DO UPDATE SET
     summary_text = EXCLUDED.summary_text,
     concepts = EXCLUDED.concepts,
     visibility = EXCLUDED.visibility
-RETURNING id, session_id, visibility, summary_text, concepts, created_at
+RETURNING id, session_id, visibility, summary_text, concepts, created_at, owner_type, owner_user_id, owner_team_id
 `
 
 type UpsertSessionSummaryParams struct {
@@ -132,6 +141,9 @@ func (q *Queries) UpsertSessionSummary(ctx context.Context, arg UpsertSessionSum
 		&i.SummaryText,
 		&i.Concepts,
 		&i.CreatedAt,
+		&i.OwnerType,
+		&i.OwnerUserID,
+		&i.OwnerTeamID,
 	)
 	return i, err
 }

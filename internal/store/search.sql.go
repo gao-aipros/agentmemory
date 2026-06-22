@@ -58,7 +58,9 @@ WITH RECURSIVE graph_traversal AS (
         0 AS depth,
         0.0::float AS graph_score
     FROM graph_nodes gn
+    JOIN observations o ON gn.entity_id = o.id
     WHERE gn.entity_id = ANY($1::text[])
+      AND ($2::text IS NULL OR o.owner_user_id = $2)
 
     UNION ALL
 
@@ -70,7 +72,9 @@ WITH RECURSIVE graph_traversal AS (
     FROM graph_nodes gn
     JOIN graph_edges ge ON gn.id = ge.to_node_id
     JOIN graph_traversal gt ON ge.from_node_id = gt.node_id
+    JOIN observations o ON gn.entity_id = o.id
     WHERE gt.depth < 2
+      AND ($2::text IS NULL OR o.owner_user_id = $2)
 )
 SELECT DISTINCT observation_id AS id, MAX(graph_score)::float8 AS graph_score
 FROM graph_traversal
@@ -78,6 +82,11 @@ WHERE observation_id IS NOT NULL
   AND observation_id != ALL($1::text[])
 GROUP BY observation_id
 `
+
+type GraphTraversalParams struct {
+	Column1     []string
+	OwnerUserID *string
+}
 
 type GraphTraversalRow struct {
 	ID         string
@@ -87,8 +96,9 @@ type GraphTraversalRow struct {
 // Recursive graph traversal from seed observation IDs.
 // Expands up to 2 hops through graph_edges, accumulating edge weights.
 // Returns observation IDs discovered via graph with traversal scores.
-func (q *Queries) GraphTraversal(ctx context.Context, dollar_1 []string) ([]GraphTraversalRow, error) {
-	rows, err := q.db.Query(ctx, graphTraversal, dollar_1)
+// sqlc.narg('owner_user_id') enforces cross-tenant isolation.
+func (q *Queries) GraphTraversal(ctx context.Context, arg GraphTraversalParams) ([]GraphTraversalRow, error) {
+	rows, err := q.db.Query(ctx, graphTraversal, arg.Column1, arg.OwnerUserID)
 	if err != nil {
 		return nil, err
 	}
@@ -169,14 +179,17 @@ SELECT
     oe.observation_id AS id,
     (1.0 - (oe.embedding <=> $1))::float8 AS vector_score
 FROM observation_embeddings oe
+JOIN observations o ON oe.observation_id = o.id
 WHERE oe.embedding IS NOT NULL
+  AND ($2::text IS NULL OR o.owner_user_id = $2)
 ORDER BY oe.embedding <=> $1
-LIMIT $2
+LIMIT $3
 `
 
 type VectorSearchParams struct {
-	Embedding *pgvector.Vector
-	Limit     int32
+	Embedding   *pgvector.Vector
+	OwnerUserID *string
+	Limit       int32
 }
 
 type VectorSearchRow struct {
@@ -186,8 +199,9 @@ type VectorSearchRow struct {
 
 // Cosine similarity search over observation embeddings using pgvector.
 // Returns observation IDs with similarity scores (1 - cosine_distance).
+// sqlc.arg(owner_user_id) enforces cross-tenant isolation.
 func (q *Queries) VectorSearch(ctx context.Context, arg VectorSearchParams) ([]VectorSearchRow, error) {
-	rows, err := q.db.Query(ctx, vectorSearch, arg.Embedding, arg.Limit)
+	rows, err := q.db.Query(ctx, vectorSearch, arg.Embedding, arg.OwnerUserID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}

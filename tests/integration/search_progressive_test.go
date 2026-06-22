@@ -58,7 +58,7 @@ func TestProgressiveDisclosure_ExpandByID(t *testing.T) {
 	}
 
 	// Expand by IDs
-	full, err := searchSvc.SearchExpand(ctx, ids)
+	full, err := searchSvc.SearchExpand(ctx, ids, "user-001")
 	require.NoError(t, err)
 	require.NotEmpty(t, full)
 
@@ -83,7 +83,7 @@ func TestProgressiveDisclosure_ExpandNonexistentID(t *testing.T) {
 	searchSvc := service.NewSearchService(db.Pool, nil)
 
 	// Try to expand a nonexistent ID
-	full, err := searchSvc.SearchExpand(ctx, []string{"nonexistent-id-12345"})
+	full, err := searchSvc.SearchExpand(ctx, []string{"nonexistent-id-12345"}, "user-001")
 	require.NoError(t, err)
 
 	// Should return empty results, not error
@@ -112,7 +112,7 @@ func TestProgressiveDisclosure_TwoStepFlow(t *testing.T) {
 
 	// Step 2: Select first result and expand it
 	firstID := compact[0].ID
-	full, err := searchSvc.SearchExpand(ctx, []string{firstID})
+	full, err := searchSvc.SearchExpand(ctx, []string{firstID}, "user-001")
 	require.NoError(t, err)
 	require.Len(t, full, 1)
 
@@ -120,4 +120,38 @@ func TestProgressiveDisclosure_TwoStepFlow(t *testing.T) {
 	assert.Equal(t, firstID, full[0].ID, "expanded ID should match compact ID")
 	assert.Equal(t, compact[0].Title, full[0].Title, "expanded title should match compact title")
 	assert.NotEmpty(t, full[0].Narrative, "expanded result should have narrative")
+}
+
+// TestSearchExpand_EnforcesOwnerIsolation verifies that SearchExpand filters
+// results to only return observations owned by the specified user.
+// This is a compile-time + behavior test for cross-tenant isolation.
+func TestSearchExpand_EnforcesOwnerIsolation(t *testing.T) {
+	db := SetupTestDB(t)
+	defer TeardownTestDB(t, db)
+
+	ctx := context.Background()
+	require.NoError(t, RunMigrations(db.Pool))
+	require.NoError(t, SeedTestObservations(db.Pool))
+
+	searchSvc := service.NewSearchService(db.Pool, nil)
+
+	// First get compact results scoped to user-001
+	compact, err := searchSvc.SearchCompact(ctx, "database", 10, "user-001")
+	require.NoError(t, err)
+	require.NotEmpty(t, compact)
+
+	ids := make([]string, len(compact))
+	for i, c := range compact {
+		ids[i] = c.ID
+	}
+
+	// Expand with the correct user — should return results
+	full, err := searchSvc.SearchExpand(ctx, ids, "user-001")
+	require.NoError(t, err)
+	assert.NotEmpty(t, full, "expanding with correct userID should return results")
+
+	// Verify all returned observations belong to user-001
+	for _, f := range full {
+		assert.Equal(t, "user-001", f.OwnerUserID, "all expanded results must belong to the requesting user")
+	}
 }

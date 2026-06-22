@@ -174,7 +174,10 @@ func (s *ContextService) gatherGraphNeighbors(ctx context.Context, userID string
 		return "", err
 	}
 
-	traversed, err := s.queries.GraphTraversal(ctx, seedIds)
+	traversed, err := s.queries.GraphTraversal(ctx, store.GraphTraversalParams{
+		Column1:     seedIds,
+		OwnerUserID: &userID,
+	})
 	if err != nil {
 		return "", err
 	}

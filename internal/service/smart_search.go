@@ -60,7 +60,7 @@ func (s *SmartSearchService) Search(ctx context.Context, query string, limit int
 
 	// Expand requested IDs
 	if len(expandIDs) > 0 {
-		expanded, err := s.searchSvc.SearchExpand(ctx, expandIDs)
+		expanded, err := s.searchSvc.SearchExpand(ctx, expandIDs, userID)
 		if err != nil {
 			return nil, fmt.Errorf("smart search expand failed: %w", err)
 		}

@@ -71,7 +71,7 @@ func (s *RecallService) Recall(ctx context.Context, query string, limit int, for
 		for i, r := range results {
 			ids[i] = r.ID
 		}
-		full, err := s.searchSvc.SearchExpand(ctx, ids)
+		full, err := s.searchSvc.SearchExpand(ctx, ids, userID)
 		if err != nil {
 			return nil, fmt.Errorf("recall expand failed: %w", err)
 		}
@@ -90,7 +90,7 @@ func (s *RecallService) Recall(ctx context.Context, query string, limit int, for
 		for i, r := range results {
 			ids[i] = r.ID
 		}
-		full, err := s.searchSvc.SearchExpand(ctx, ids)
+		full, err := s.searchSvc.SearchExpand(ctx, ids, userID)
 		if err != nil {
 			return nil, fmt.Errorf("recall expand failed: %w", err)
 		}
