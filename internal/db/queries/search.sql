@@ -8,18 +8,22 @@ FROM bm25_search($1, $2, $3) s;
 -- name: VectorSearch :many
 -- Cosine similarity search over observation embeddings using pgvector.
 -- Returns observation IDs with similarity scores (1 - cosine_distance).
+-- sqlc.arg(owner_user_id) enforces cross-tenant isolation.
 SELECT
     oe.observation_id AS id,
-    (1.0 - (oe.embedding <=> $1))::float8 AS vector_score
+    (1.0 - (oe.embedding <=> sqlc.arg(embedding)))::float8 AS vector_score
 FROM observation_embeddings oe
+JOIN observations o ON oe.observation_id = o.id
 WHERE oe.embedding IS NOT NULL
-ORDER BY oe.embedding <=> $1
-LIMIT $2;
+  AND (sqlc.narg('owner_user_id')::text IS NULL OR o.owner_user_id = sqlc.narg('owner_user_id'))
+ORDER BY oe.embedding <=> sqlc.arg(embedding)
+LIMIT sqlc.arg('limit');
 
 -- name: GraphTraversal :many
 -- Recursive graph traversal from seed observation IDs.
 -- Expands up to 2 hops through graph_edges, accumulating edge weights.
 -- Returns observation IDs discovered via graph with traversal scores.
+-- sqlc.narg('owner_user_id') enforces cross-tenant isolation.
 WITH RECURSIVE graph_traversal AS (
     SELECT
         gn.id AS node_id,
@@ -27,7 +31,9 @@ WITH RECURSIVE graph_traversal AS (
         0 AS depth,
         0.0::float AS graph_score
     FROM graph_nodes gn
+    JOIN observations o ON gn.entity_id = o.id
     WHERE gn.entity_id = ANY($1::text[])
+      AND (sqlc.narg('owner_user_id')::text IS NULL OR o.owner_user_id = sqlc.narg('owner_user_id'))
 
     UNION ALL
 
@@ -39,7 +45,9 @@ WITH RECURSIVE graph_traversal AS (
     FROM graph_nodes gn
     JOIN graph_edges ge ON gn.id = ge.to_node_id
     JOIN graph_traversal gt ON ge.from_node_id = gt.node_id
+    JOIN observations o ON gn.entity_id = o.id
     WHERE gt.depth < 2
+      AND (sqlc.narg('owner_user_id')::text IS NULL OR o.owner_user_id = sqlc.narg('owner_user_id'))
 )
 SELECT DISTINCT observation_id AS id, MAX(graph_score)::float8 AS graph_score
 FROM graph_traversal

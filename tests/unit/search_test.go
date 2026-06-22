@@ -138,4 +138,59 @@ func TestSearchParams_RequiresOwnerUserID(t *testing.T) {
 		OwnerUserID: "user-456",
 	}
 	assert.Equal(t, "user-456", hp.OwnerUserID, "HybridSearchParams must have OwnerUserID field")
+
+	// VectorSearchParams must also include OwnerUserID for cross-tenant isolation.
+	// This assertion will fail to compile in the RED phase (field missing).
+	ownerID := "user-789"
+	vp := store.VectorSearchParams{
+		OwnerUserID: &ownerID,
+	}
+	assert.NotNil(t, vp.OwnerUserID, "VectorSearchParams must have OwnerUserID field")
+	assert.Equal(t, "user-789", *vp.OwnerUserID, "VectorSearchParams OwnerUserID must match")
+
+	// Verify NULL owner bypasses the filter (for admin/internal use).
+	vpNull := store.VectorSearchParams{
+		OwnerUserID: nil,
+	}
+	assert.Nil(t, vpNull.OwnerUserID, "VectorSearchParams OwnerUserID should accept nil for admin bypass")
+}
+
+// TestGraphTraversalParams_RequiresOwnerUserID verifies that GraphTraversal
+// parameters include an OwnerUserID field for cross-tenant isolation.
+// This is a compile-time assertion: if the type or field does not exist,
+// this test will not compile (RED phase).
+func TestGraphTraversalParams_RequiresOwnerUserID(t *testing.T) {
+	// With a specific owner — only returns graph nodes linked to that user's observations.
+	ownerID := "user-42"
+	gtp := store.GraphTraversalParams{
+		OwnerUserID: &ownerID,
+	}
+	assert.NotNil(t, gtp.OwnerUserID, "GraphTraversalParams must have OwnerUserID field")
+	assert.Equal(t, "user-42", *gtp.OwnerUserID, "GraphTraversalParams OwnerUserID must match")
+
+	// NULL owner bypasses the filter (for admin/internal use).
+	gtpNull := store.GraphTraversalParams{
+		OwnerUserID: nil,
+	}
+	assert.Nil(t, gtpNull.OwnerUserID, "GraphTraversalParams OwnerUserID should accept nil for admin bypass")
+}
+
+// TestListAllLessonsParams_RequiresTeamID verifies that ListAllLessons
+// parameters include a TeamID field for cross-tenant isolation.
+// This is a compile-time assertion: if the type or field does not exist,
+// this test will not compile (RED phase).
+func TestListAllLessonsParams_RequiresTeamID(t *testing.T) {
+	// With a specific team — only returns lessons for that team.
+	teamID := "team-alpha"
+	lp := store.ListAllLessonsParams{
+		TeamID: &teamID,
+	}
+	assert.NotNil(t, lp.TeamID, "ListAllLessonsParams must have TeamID field")
+	assert.Equal(t, "team-alpha", *lp.TeamID, "ListAllLessonsParams TeamID must match")
+
+	// NULL team bypasses the filter (for admin/internal use).
+	lpNull := store.ListAllLessonsParams{
+		TeamID: nil,
+	}
+	assert.Nil(t, lpNull.TeamID, "ListAllLessonsParams TeamID should accept nil for admin bypass")
 }

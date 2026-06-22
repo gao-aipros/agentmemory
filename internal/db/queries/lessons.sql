@@ -20,4 +20,8 @@ INSERT INTO lesson_reinforcements (id, lesson_id, observation_id, confidence_del
 VALUES ($1, $2, $3, $4);
 
 -- name: ListAllLessons :many
-SELECT * FROM lessons ORDER BY created_at DESC LIMIT $1;
+-- sqlc.narg('team_id') enforces cross-tenant isolation.
+SELECT * FROM lessons
+WHERE (sqlc.narg('team_id')::text IS NULL OR team_id = sqlc.narg('team_id'))
+ORDER BY created_at DESC
+LIMIT $1;

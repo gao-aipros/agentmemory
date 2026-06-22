@@ -93,7 +93,10 @@ func (s *SearchService) HybridSearch(ctx context.Context, query string, limit in
 	// Run graph traversal to get graph bonus scores
 	graphScores := make(map[string]float64)
 	if len(seedIds) > 0 {
-		traversed, err := s.queries.GraphTraversal(ctx, seedIds)
+		traversed, err := s.queries.GraphTraversal(ctx, store.GraphTraversalParams{
+			Column1:     seedIds,
+			OwnerUserID: &userID,
+		})
 		if err != nil {
 			// Log but continue — graph scores will be 0
 			traversed = nil
@@ -173,9 +176,10 @@ func (s *SearchService) SearchCompact(ctx context.Context, query string, limit i
 	return compact, nil
 }
 
-// SearchExpand returns full observation details for the given IDs.
-// Uses a single batch query to avoid N+1.
-func (s *SearchService) SearchExpand(ctx context.Context, ids []string) ([]FullResult, error) {
+// SearchExpand returns full observation details for the given IDs, scoped to userID.
+// Uses a single batch query to avoid N+1, then filters by owner in-memory.
+// userID enforces cross-tenant isolation — only observations owned by this user are returned.
+func (s *SearchService) SearchExpand(ctx context.Context, ids []string, userID string) ([]FullResult, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -187,6 +191,11 @@ func (s *SearchService) SearchExpand(ctx context.Context, ids []string) ([]FullR
 
 	results := make([]FullResult, 0, len(observations))
 	for _, obs := range observations {
+		// Cross-tenant isolation: skip observations not owned by the requesting user.
+		if obs.OwnerUserID == nil || *obs.OwnerUserID != userID {
+			continue
+		}
+
 		facts := ""
 		if obs.Facts != nil {
 			facts = *obs.Facts
@@ -197,14 +206,20 @@ func (s *SearchService) SearchExpand(ctx context.Context, ids []string) ([]FullR
 			timestamp = obs.Timestamp.Time.Format("2006-01-02T15:04:05Z")
 		}
 
+		ownerID := ""
+		if obs.OwnerUserID != nil {
+			ownerID = *obs.OwnerUserID
+		}
+
 		results = append(results, FullResult{
-			ID:        obs.ID,
-			Title:     obs.Title,
-			Narrative: obs.Narrative,
-			Facts:     facts,
-			Concepts:  obs.Concepts,
-			Files:     obs.Files,
-			Timestamp: timestamp,
+			ID:          obs.ID,
+			Title:       obs.Title,
+			Narrative:   obs.Narrative,
+			Facts:       facts,
+			Concepts:    obs.Concepts,
+			Files:       obs.Files,
+			Timestamp:   timestamp,
+			OwnerUserID: ownerID,
 		})
 	}
 
