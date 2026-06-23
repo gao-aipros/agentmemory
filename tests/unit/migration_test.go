@@ -3,14 +3,13 @@ package unit
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// findMigrationsDir walks up from the working directory until it finds go.mod,
-// then returns the migrations/ subdirectory under that module root.
 func findMigrationsDir(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()
@@ -21,13 +20,12 @@ func findMigrationsDir(t *testing.T) string {
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			t.Fatal("cannot find module root (go.mod) not found walking up from working directory")
+			t.Fatal("cannot find module root (go.mod) walking up from working directory")
 		}
 		dir = parent
 	}
 }
 
-// readFile reads a file and fails the test if it cannot be read.
 func readMigrationFile(t *testing.T, path string) string {
 	t.Helper()
 	content, err := os.ReadFile(path)
@@ -35,92 +33,90 @@ func readMigrationFile(t *testing.T, path string) string {
 	return string(content)
 }
 
-// =============================================================================
-// Migration 009: Owner columns for compressed_observations, session_summaries, lessons
-// =============================================================================
-
-// TestMigration009OwnerColumns_FilesExist verifies that the 009_owner_columns
-// .up.sql and .down.sql migration files exist.
-func TestMigration009OwnerColumns_FilesExist(t *testing.T) {
+func TestSchema_FilesExist(t *testing.T) {
 	migrationsDir := findMigrationsDir(t)
 
-	upPath := filepath.Join(migrationsDir, "009_owner_columns.up.sql")
-	require.FileExists(t, upPath, "009_owner_columns.up.sql must exist")
-
-	downPath := filepath.Join(migrationsDir, "009_owner_columns.down.sql")
-	require.FileExists(t, downPath, "009_owner_columns.down.sql must exist")
+	require.FileExists(t, filepath.Join(migrationsDir, "001_initial_schema.up.sql"),
+		"001_initial_schema.up.sql must exist")
+	require.FileExists(t, filepath.Join(migrationsDir, "001_initial_schema.down.sql"),
+		"001_initial_schema.down.sql must exist")
 }
 
-// TestMigration009OwnerColumns_UpContent verifies that the UP migration
-// contains the expected ALTER TABLE and CREATE INDEX statements for all
-// three tables: compressed_observations, session_summaries, lessons.
-func TestMigration009OwnerColumns_UpContent(t *testing.T) {
+func TestSchema_OnlyOneMigration(t *testing.T) {
 	migrationsDir := findMigrationsDir(t)
-	upPath := filepath.Join(migrationsDir, "009_owner_columns.up.sql")
-	content := readMigrationFile(t, upPath)
+	entries, err := os.ReadDir(migrationsDir)
+	require.NoError(t, err)
 
-	// --- compressed_observations ---
-	assert.Contains(t, content, "ALTER TABLE compressed_observations",
-		"must alter compressed_observations table")
-	assert.Contains(t, content, "ADD COLUMN owner_type TEXT NOT NULL DEFAULT 'user'",
-		"compressed_observations must have owner_type column")
-	assert.Contains(t, content, "ADD COLUMN owner_user_id TEXT",
-		"compressed_observations must have owner_user_id column")
-	assert.Contains(t, content, "ADD COLUMN owner_team_id TEXT",
-		"compressed_observations must have owner_team_id column")
-	assert.Contains(t, content, "idx_compressed_observations_owner_user_id",
-		"must create index on compressed_observations(owner_user_id)")
-	assert.Contains(t, content, "idx_compressed_observations_owner_team_id",
-		"must create index on compressed_observations(owner_team_id)")
-
-	// --- session_summaries ---
-	assert.Contains(t, content, "ALTER TABLE session_summaries",
-		"must alter session_summaries table")
-	assert.Contains(t, content, "idx_session_summaries_owner_user_id",
-		"must create index on session_summaries(owner_user_id)")
-	assert.Contains(t, content, "idx_session_summaries_owner_team_id",
-		"must create index on session_summaries(owner_team_id)")
-
-	// --- lessons ---
-	assert.Contains(t, content, "ALTER TABLE lessons",
-		"must alter lessons table")
-	assert.Contains(t, content, "idx_lessons_owner_user_id",
-		"must create index on lessons(owner_user_id)")
-
-	// Owner columns must NOT have FK constraints (REFERENCES).
-	// FKs will be added to ALL tables together in a future migration (#38, #39).
-	// The existing observations and memories tables use bare TEXT columns.
-	assert.NotContains(t, content, "REFERENCES",
-		"owner columns must not have REFERENCES clauses; FKs deferred to future migration")
+	var upCount int
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".up.sql") {
+			upCount++
+		}
+	}
+	assert.Equal(t, 1, upCount, "there should be exactly one .up.sql migration file (consolidated)")
 }
 
-// TestMigration009OwnerColumns_DownContent verifies that the DOWN migration
-// reverses the UP migration by dropping indexes then columns.
-func TestMigration009OwnerColumns_DownContent(t *testing.T) {
+func TestSchema_UpContent(t *testing.T) {
 	migrationsDir := findMigrationsDir(t)
-	downPath := filepath.Join(migrationsDir, "009_owner_columns.down.sql")
-	content := readMigrationFile(t, downPath)
+	content := readMigrationFile(t, filepath.Join(migrationsDir, "001_initial_schema.up.sql"))
 
-	assert.Contains(t, content, "DROP INDEX IF EXISTS",
-		"down migration must drop indexes")
+	// All expected tables
+	tables := []string{
+		"users", "api_keys",
+		"teams", "team_members",
+		"sessions",
+		"observations", "observation_embeddings",
+		"compressed_observations", "compressed_embeddings",
+		"session_summaries",
+		"memories", "lessons", "lesson_reinforcements",
+		"graph_nodes", "graph_edges",
+		"crystals", "insights", "procedural_memories",
+	}
+	for _, tbl := range tables {
+		assert.Contains(t, content, "CREATE TABLE IF NOT EXISTS "+tbl,
+			"schema must create table %s", tbl)
+	}
 
-	// All three table indexes must be dropped
-	assert.Contains(t, content, "idx_compressed_observations_owner_user_id",
-		"must drop index on compressed_observations(owner_user_id)")
-	assert.Contains(t, content, "idx_compressed_observations_owner_team_id",
-		"must drop index on compressed_observations(owner_team_id)")
-	assert.Contains(t, content, "idx_session_summaries_owner_user_id",
-		"must drop index on session_summaries(owner_user_id)")
-	assert.Contains(t, content, "idx_session_summaries_owner_team_id",
-		"must drop index on session_summaries(owner_team_id)")
-	assert.Contains(t, content, "idx_lessons_owner_user_id",
-		"must drop index on lessons(owner_user_id)")
+	// FKs in final form
+	assert.Contains(t, content, "REFERENCES sessions(id) ON DELETE CASCADE",
+		"observations.session_id must cascade")
+	assert.Contains(t, content, "REFERENCES sessions(id) ON DELETE CASCADE UNIQUE",
+		"session_summaries.session_id must cascade + unique")
+	assert.Contains(t, content, "REFERENCES users(id) ON DELETE SET NULL",
+		"sessions.user_id must SET NULL on delete")
 
-	// All three tables must have DROP COLUMN
-	assert.Contains(t, content, "compressed_observations",
-		"down migration must reference compressed_observations")
-	assert.Contains(t, content, "session_summaries",
-		"down migration must reference session_summaries")
-	assert.Contains(t, content, "lessons",
-		"down migration must reference lessons")
+	// Key indexes
+	assert.Contains(t, content, "USING hnsw",
+		"vector index must use HNSW")
+	assert.Contains(t, content, "bm25",
+		"full-text search must use BM25")
+	assert.Contains(t, content, "uq_team_members_team_user",
+		"team_members must have unique constraint")
+
+	// Check constraints
+	assert.Contains(t, content, "chk_crystals_visibility",
+		"crystals must have named CHECK constraint")
+
+	// Functions
+	assert.Contains(t, content, "CREATE OR REPLACE FUNCTION bm25_search",
+		"must define bm25_search function")
+	assert.Contains(t, content, "CREATE OR REPLACE FUNCTION hybrid_search",
+		"must define hybrid_search function")
+}
+
+func TestSchema_DownContent(t *testing.T) {
+	migrationsDir := findMigrationsDir(t)
+	content := readMigrationFile(t, filepath.Join(migrationsDir, "001_initial_schema.down.sql"))
+
+	// All tables dropped in correct order
+	for _, tbl := range []string{"users", "sessions", "observations", "memories", "lessons"} {
+		assert.Contains(t, content, "DROP TABLE IF EXISTS "+tbl,
+			"down must drop %s", tbl)
+	}
+
+	// Functions dropped
+	assert.Contains(t, content, "DROP FUNCTION IF EXISTS hybrid_search",
+		"down must drop hybrid_search function")
+	assert.Contains(t, content, "DROP FUNCTION IF EXISTS bm25_search",
+		"down must drop bm25_search function")
 }
