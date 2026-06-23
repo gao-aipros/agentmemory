@@ -1,6 +1,6 @@
 -- 008_performance_indexes: Remove performance indexes added in T182.
 
-DROP INDEX IF EXISTS idx_obs_emb_ivfflat;
+DROP INDEX IF EXISTS idx_obs_emb_hnsw;
 DROP INDEX IF EXISTS idx_observations_owner_user_id;
 DROP INDEX IF EXISTS idx_observations_owner_team_id;
 DROP INDEX IF EXISTS idx_memories_owner_user_id;

@@ -38,9 +38,11 @@ func TestMigration010_UpContent(t *testing.T) {
 	assert.Contains(t, content, "fk_memories_owner_user_id",
 		"must add FK on memories.owner_user_id")
 
-	// #40: partial embedding indexes per model
-	assert.Contains(t, content, "idx_obs_emb_ivfflat_ada002",
-		"must create partial IVFFlat index per model")
+	// #40: partial embedding indexes per model; drop both legacy names
+	assert.Contains(t, content, "idx_obs_emb_hnsw_ada002",
+		"must create partial HNSW index per model")
+	assert.Contains(t, content, "DROP INDEX IF EXISTS idx_obs_emb_ivfflat",
+		"must drop legacy IVFFlat index name for idempotent upgrades")
 
 	// #41: composite indexes on observations
 	assert.Contains(t, content, "idx_observations_session_type",
@@ -80,11 +82,15 @@ func TestMigration010_DownContent(t *testing.T) {
 	assert.Contains(t, content, "fk_memories_owner_user_id",
 		"down must drop memories FK")
 
-	// #40: drop partial index, recreate original
+	// #40: drop both partial index names, recreate original IVFFlat full index
+	assert.Contains(t, content, "idx_obs_emb_hnsw_ada002",
+		"down must drop HNSW partial embedding index")
 	assert.Contains(t, content, "idx_obs_emb_ivfflat_ada002",
-		"down must drop partial embedding index")
+		"down must drop legacy IVFFlat partial embedding index")
 	assert.Contains(t, content, "idx_obs_emb_ivfflat",
-		"down must recreate original full embedding index")
+		"down must recreate original IVFFlat full embedding index")
+	assert.Contains(t, content, "WITH (lists = 100)",
+		"down must restore original IVFFlat index configuration")
 
 	// #41: drop composite indexes
 	assert.Contains(t, content, "idx_observations_session_type",
