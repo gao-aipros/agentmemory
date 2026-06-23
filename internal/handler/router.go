@@ -58,6 +58,7 @@ func NewRouter(bundle *mcp.ServiceBundle, cfg *config.Config) chi.Router {
 	r.Use(SanitizeInputMiddleware)   // Strip HTML tags from query parameters (XSS prevention)
 	r.Use(SanitizeJSONBodyMiddleware) // Strip HTML tags from JSON body fields (XSS prevention)
 	r.Use(RateLimitMiddleware)       // Rate limiting placeholder (no-op until implemented)
+	r.Use(CSRFMiddleware)            // CSRF protection via double-submit cookie pattern (#99)
 	r.Use(middleware.RequestID)
 	r.Use(slogLoggerMiddleware)
 	r.Use(middleware.Recoverer)
