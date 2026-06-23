@@ -24,25 +24,26 @@ type LLMService struct {
 }
 
 // NewLLMService creates an LLMService from environment variables.
-// LLM_PROVIDER: "openai" (default) or "anthropic".
+// LLM_PROVIDER: "openai-compatible" (default) or "anthropic".
+//   - "openai-compatible": any backend speaking the OpenAI API (Ollama, vLLM, Groq, etc.).
+//     Use LLM_BASE_URL to point at a non-OpenAI backend. "openai" is accepted as an alias.
+//   - "anthropic": Anthropic API (Anthropic SDK protocol).
 // LLM_MODEL: the model name (provider-specific default if unset).
 // LLM_API_KEY: unified API key for any provider (takes priority).
-// OPENAI_API_KEY: fallback when LLM_PROVIDER=openai.
-// ANTHROPIC_API_KEY: fallback when LLM_PROVIDER=anthropic.
 // LLM_BASE_URL: custom base URL for any provider (optional).
 func NewLLMService() (*LLMService, error) {
 	provider := strings.ToLower(os.Getenv("LLM_PROVIDER"))
 	if provider == "" {
-		provider = "openai"
+		provider = "openai-compatible"
 	}
 
 	switch provider {
-	case "openai":
+	case "openai-compatible", "openai":
 		return newOpenAILLM()
 	case "anthropic":
 		return newAnthropicLLM()
 	default:
-		return nil, fmt.Errorf("unsupported LLM_PROVIDER %q: must be \"openai\" or \"anthropic\"", provider)
+		return nil, fmt.Errorf("unsupported LLM_PROVIDER %q: must be \"openai-compatible\" or \"anthropic\"", provider)
 	}
 }
 
@@ -66,14 +67,13 @@ func (s *LLMService) Call(ctx context.Context, prompt string) (string, error) {
 }
 
 // resolveLLMAPIKey returns the effective API key for the given provider.
-// Priority: LLM_API_KEY > provider-specific env var (OPENAI_API_KEY or
-// ANTHROPIC_API_KEY) > empty string.
+// Priority: LLM_API_KEY > provider-specific env var > empty string.
 func resolveLLMAPIKey(provider string) string {
 	if key := os.Getenv("LLM_API_KEY"); key != "" {
 		return key
 	}
 	switch provider {
-	case "openai":
+	case "openai-compatible", "openai":
 		return os.Getenv("OPENAI_API_KEY")
 	case "anthropic":
 		return os.Getenv("ANTHROPIC_API_KEY")

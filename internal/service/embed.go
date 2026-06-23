@@ -19,23 +19,25 @@ type EmbeddingService struct {
 }
 
 // NewEmbeddingService creates an EmbeddingService from environment variables.
-// EMBEDDING_PROVIDER: "openai" (default, currently the only supported provider).
+// EMBEDDING_PROVIDER: "openai-compatible" (default) — any backend speaking the
+//   OpenAI embeddings API. Use EMBEDDING_BASE_URL to point at a non-OpenAI backend.
+//   "openai" is accepted as a backward-compatible alias.
 // EMBEDDING_MODEL: the embedding model name (provider-specific default if unset).
-// OPENAI_API_KEY: required for OpenAI embeddings.
+// EMBEDDING_API_KEY: API key for the embedding provider.
 func NewEmbeddingService() (*EmbeddingService, error) {
 	provider := strings.ToLower(os.Getenv("EMBEDDING_PROVIDER"))
 	if provider == "" {
-		provider = "openai"
+		provider = "openai-compatible"
 	}
 
 	var embedder embeddings.Embedder
 	var err error
 
 	switch provider {
-	case "openai":
+	case "openai-compatible", "openai":
 		embedder, err = newOpenAIEmbedder()
 	default:
-		return nil, fmt.Errorf("unsupported EMBEDDING_PROVIDER %q: must be \"openai\"", provider)
+		return nil, fmt.Errorf("unsupported EMBEDDING_PROVIDER %q: must be \"openai-compatible\"", provider)
 	}
 
 	if err != nil {
