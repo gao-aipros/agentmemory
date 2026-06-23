@@ -115,6 +115,15 @@ func validateSessionToken(ctx context.Context, token string, secret string, quer
 	return &user, nil
 }
 
+// checkAPIKeyExpiry returns an error if the API key has expired.
+// The check is a no-op if ExpiresAt is not set (Valid is false).
+func checkAPIKeyExpiry(apiKey *store.ApiKey) error {
+	if apiKey.ExpiresAt.Valid && apiKey.ExpiresAt.Time.Before(time.Now()) {
+		return fmt.Errorf("API key has expired")
+	}
+	return nil
+}
+
 // validateAPIKey validates an API key token (by prefix lookup) and returns the corresponding user.
 func validateAPIKey(ctx context.Context, token string, queries *store.Queries) (*store.User, error) {
 	// Strip the "ak_" prefix before hashing — stored hash was computed from bare hex key
@@ -129,9 +138,9 @@ func validateAPIKey(ctx context.Context, token string, queries *store.Queries) (
 		return nil, fmt.Errorf("invalid API key")
 	}
 
-	// Check expiration if set
-	if apiKey.ExpiresAt.Valid && apiKey.ExpiresAt.Time.Before(time.Now()) {
-		return nil, fmt.Errorf("API key has expired")
+	// Check expiration
+	if err := checkAPIKeyExpiry(&apiKey); err != nil {
+		return nil, err
 	}
 
 	// Update last_used_at (best-effort, use background context to avoid cancel)
