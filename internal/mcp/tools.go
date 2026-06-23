@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 
 	"github.com/agentmemory/agentmemory/internal/auth"
 	"github.com/agentmemory/agentmemory/internal/service"
@@ -16,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	"golang.org/x/sync/semaphore"
 )
 
 // ServiceBundle holds all service dependencies for MCP tool registrations.
@@ -81,7 +83,7 @@ func NewServiceBundle(pool *pgxpool.Pool) *ServiceBundle {
 	slotSvc := service.NewSlotService(pool)
 	ctxSvc := service.NewContextService(pool, embedSvc, slotSvc)
 	evictSvc := service.NewEvictionService(pool)
-	sessionEndH := service.NewSessionEndHandler(sessionSvc, summarizer, consolidator, reflector)
+	sessionEndH := service.NewSessionEndHandler(sessionSvc, summarizer, consolidator, reflector, &sync.WaitGroup{}, semaphore.NewWeighted(20))
 	signalSvc := service.NewSignalService(pool)
 	sentinelSvc := service.NewSentinelService(pool)
 	checkpointSvc := service.NewCheckpointService(pool)

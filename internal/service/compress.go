@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
+	"golang.org/x/sync/semaphore"
 )
 
 // CompressionService picks up raw observations and compresses them into
@@ -23,6 +24,7 @@ type CompressionService struct {
 	queries    *store.Queries
 	llmService *LLMService
 	embedSvc   *EmbeddingService
+	sem        *semaphore.Weighted
 }
 
 // NewCompressionService creates a new CompressionService.
@@ -31,13 +33,30 @@ func NewCompressionService(pool *pgxpool.Pool, llm *LLMService, embedSvc *Embedd
 		queries:    store.New(pool),
 		llmService: llm,
 		embedSvc:   embedSvc,
+		sem:        semaphore.NewWeighted(20),
 	}
 }
 
 // TriggerAsync kicks off an asynchronous compression for the given observation.
 // This is non-blocking — it launches a goroutine and returns immediately.
+// Concurrent compressions are bounded by a semaphore to prevent unbounded
+// goroutine growth.
 func (s *CompressionService) TriggerAsync(ctx context.Context, obs *store.Observation) {
 	go func() {
+		// Acquire semaphore slot to bound concurrency.
+		if err := s.sem.Acquire(context.Background(), 1); err != nil {
+			return // context cancelled, server shutting down
+		}
+		defer s.sem.Release(1)
+
+		// Recover from panics to prevent a single bad observation from
+		// crashing the server.
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("compression goroutine panicked", "panic", r)
+			}
+		}()
+
 		// Use a background context with timeout so the goroutine doesn't
 		// outlive the request context.
 		bgCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

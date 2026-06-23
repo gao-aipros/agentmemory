@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/semaphore"
 )
 
 // TestSessionEndTriggersPipeline tests that ending a session triggers
@@ -68,7 +70,7 @@ func TestSessionEndTriggersPipeline(t *testing.T) {
 	mode.OwnerUserID = userID
 	consolidator := service.NewConsolidationService(db.Pool, llmSvc, mode)
 	reflector := service.NewReflectionService(db.Pool, 3600)
-	sessionEndH := service.NewSessionEndHandler(sessionSvc, summarizer, consolidator, reflector)
+	sessionEndH := service.NewSessionEndHandler(sessionSvc, summarizer, consolidator, reflector, &sync.WaitGroup{}, semaphore.NewWeighted(20))
 
 	// End the session
 	err = sessionEndH.HandleSessionEnd(ctx, sessionID)
@@ -137,7 +139,7 @@ func TestSessionEndNoObservations(t *testing.T) {
 	mode := service.DefaultConsolidationMode("member_choice", false)
 	consolidator := service.NewConsolidationService(db.Pool, llmSvc, mode)
 	reflector := service.NewReflectionService(db.Pool, 3600)
-	sessionEndH := service.NewSessionEndHandler(sessionSvc, summarizer, consolidator, reflector)
+	sessionEndH := service.NewSessionEndHandler(sessionSvc, summarizer, consolidator, reflector, &sync.WaitGroup{}, semaphore.NewWeighted(20))
 
 	// End session (should handle empty observations gracefully)
 	err = sessionEndH.HandleSessionEnd(ctx, sessionID)
