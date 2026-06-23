@@ -2,9 +2,9 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"time"
 
-	"github.com/agentmemory/agentmemory/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -38,32 +38,77 @@ type FilePattern struct {
 	Description string `json:"description"`
 }
 
+// patternsQuerier handles pattern-related database queries.
+type patternsQuerier interface {
+	getConceptFrequencies(ctx context.Context) ([]ConceptFreq, error)
+}
+
+// patternsQuerierImpl is the production implementation using raw SQL.
+type patternsQuerierImpl struct {
+	pool *pgxpool.Pool
+}
+
+func (q *patternsQuerierImpl) getConceptFrequencies(ctx context.Context) ([]ConceptFreq, error) {
+	rows, err := q.pool.Query(ctx, `
+		SELECT unnest(concepts) AS concept, count(*) AS freq
+		FROM observations
+		WHERE concepts IS NOT NULL AND cardinality(concepts) > 0
+		GROUP BY concept
+		ORDER BY freq DESC
+		LIMIT 50
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query concept frequencies: %w", err)
+	}
+	defer rows.Close()
+
+	var concepts []ConceptFreq
+	for rows.Next() {
+		var cf ConceptFreq
+		if err := rows.Scan(&cf.Concept, &cf.Count); err != nil {
+			return nil, fmt.Errorf("failed to scan concept frequency: %w", err)
+		}
+		concepts = append(concepts, cf)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating concept frequencies: %w", err)
+	}
+
+	return concepts, nil
+}
+
 // PatternsService detects recurring patterns across sessions for a project.
 type PatternsService struct {
-	queries *store.Queries
+	queries patternsQuerier
 }
 
 // NewPatternsService creates a new PatternsService backed by the given connection pool.
 func NewPatternsService(pool *pgxpool.Pool) *PatternsService {
 	return &PatternsService{
-		queries: store.New(pool),
+		queries: &patternsQuerierImpl{pool: pool},
+	}
+}
+
+// newPatternsServiceWithQuerier creates a PatternsService with a custom querier (for testing).
+func newPatternsServiceWithQuerier(q patternsQuerier) *PatternsService {
+	return &PatternsService{
+		queries: q,
 	}
 }
 
 // DetectPatterns analyzes past session data for a project and returns a
-// PatternSummary with detected concept frequencies, tool usage patterns,
-// and file modification patterns. For MVP, this returns a summary with
-// empty slices — full pattern detection requires LLM integration that will
-// be added in a future iteration. Always returns a valid PatternSummary
-// without error.
+// PatternSummary with detected concept frequencies.
 func (s *PatternsService) DetectPatterns(ctx context.Context, project string) (*PatternSummary, error) {
-	// MVP: Return an empty summary. The actual implementation will query
-	// sessions and observations, then run LLM-driven pattern clustering
-	// to extract concepts, tool frequencies, and file patterns.
-	_ = project
+	concepts, err := s.queries.getConceptFrequencies(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if concepts == nil {
+		concepts = make([]ConceptFreq, 0)
+	}
 	return &PatternSummary{
 		Project:      project,
-		TopConcepts:  make([]ConceptFreq, 0),
+		TopConcepts:  concepts,
 		ToolUsage:    make([]ToolFreq, 0),
 		FilePatterns: make([]FilePattern, 0),
 		SessionCount: 0,
