@@ -51,8 +51,8 @@ func TestMigration011_CrystalsColumns(t *testing.T) {
 	ctx := context.Background()
 
 	type columnCheck struct {
-		name           string
-		expectedType   string
+		name             string
+		expectedType     string
 		expectedNullable string
 	}
 
@@ -96,7 +96,7 @@ func TestMigration011_InsightsColumns(t *testing.T) {
 	checks := []columnCheck{
 		{name: "id", expectedType: "text", expectedNullable: "NO"},
 		{name: "content", expectedType: "text", expectedNullable: "NO"},
-		{name: "confidence", expectedType: "real", expectedNullable: "NO"},
+		{name: "confidence", expectedType: "double precision", expectedNullable: "NO"},
 		{name: "source", expectedType: "text", expectedNullable: "NO"},
 	}
 
@@ -187,17 +187,17 @@ func TestMigration011_VectorIndexHNSW(t *testing.T) {
 
 	ctx := context.Background()
 
-	// The index exists after migration 010 with the name idx_obs_emb_ivfflat_ada002
+	// The index exists after migration 010 with the name idx_obs_emb_hnsw_ada002
 	// We check that the access method is 'hnsw' not 'ivfflat'
 	var amname string
 	err := db.Pool.QueryRow(ctx,
 		`SELECT am.amname
 		 FROM pg_class c
 		 JOIN pg_am am ON am.oid = c.relam
-		 WHERE c.relname = 'idx_obs_emb_ivfflat_ada002'
+		 WHERE c.relname = 'idx_obs_emb_hnsw_ada002'
 		 AND c.relkind = 'i'`,
 	).Scan(&amname)
-	require.NoError(t, err, "failed to check index access method for idx_obs_emb_ivfflat_ada002")
+	require.NoError(t, err, "failed to check index access method for idx_obs_emb_hnsw_ada002")
 	assert.Equal(t, "hnsw", amname, "embedding index should use HNSW access method, not IVFFlat")
 }
 
@@ -215,7 +215,7 @@ func TestMigration011_VectorIndexHNSW_Definition(t *testing.T) {
 	err := db.Pool.QueryRow(ctx,
 		`SELECT indexdef FROM pg_indexes
 		 WHERE schemaname = 'public'
-		 AND indexname = 'idx_obs_emb_ivfflat_ada002'`,
+		 AND indexname = 'idx_obs_emb_hnsw_ada002'`,
 	).Scan(&indexdef)
 	require.NoError(t, err, "failed to read index definition")
 	assert.Contains(t, indexdef, "USING hnsw", "index definition should use HNSW")

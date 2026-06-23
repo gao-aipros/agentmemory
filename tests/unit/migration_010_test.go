@@ -39,8 +39,8 @@ func TestMigration010_UpContent(t *testing.T) {
 		"must add FK on memories.owner_user_id")
 
 	// #40: partial embedding indexes per model
-	assert.Contains(t, content, "idx_obs_emb_ivfflat_ada002",
-		"must create partial IVFFlat index per model")
+	assert.Contains(t, content, "idx_obs_emb_hnsw_ada002",
+		"must create partial HNSW index per model")
 
 	// #41: composite indexes on observations
 	assert.Contains(t, content, "idx_observations_session_type",
@@ -81,9 +81,9 @@ func TestMigration010_DownContent(t *testing.T) {
 		"down must drop memories FK")
 
 	// #40: drop partial index, recreate original
-	assert.Contains(t, content, "idx_obs_emb_ivfflat_ada002",
+	assert.Contains(t, content, "idx_obs_emb_hnsw_ada002",
 		"down must drop partial embedding index")
-	assert.Contains(t, content, "idx_obs_emb_ivfflat",
+	assert.Contains(t, content, "idx_obs_emb_hnsw",
 		"down must recreate original full embedding index")
 
 	// #41: drop composite indexes
