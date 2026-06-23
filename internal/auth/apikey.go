@@ -41,7 +41,11 @@ func GenerateAPIKey() (prefix string, fullKey string, hash string, err error) {
 	}
 
 	// Prefix is "ak_" + first 8 characters of the hash
-	prefix = APIKeyPrefix + hash[:APIKeyPrefixLength]
+	prefixPart, err := SafeSlice(hash, APIKeyPrefixLength)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to generate key prefix: %w", err)
+	}
+	prefix = APIKeyPrefix + prefixPart
 
 	// Prepend the "ak_" prefix to fullKey so users get a ready-to-use Bearer token
 	fullKey = APIKeyPrefix + fullKey
@@ -61,4 +65,14 @@ func HashKey(key string) (string, error) {
 // ValidateKeyPrefix checks whether a string starts with the "ak_" API key prefix.
 func ValidateKeyPrefix(prefix string) bool {
 	return strings.HasPrefix(prefix, APIKeyPrefix)
+}
+
+// SafeSlice returns the first n characters of s, or an error if s is shorter than n.
+// This prevents index-out-of-range panics when slicing strings whose length
+// cannot be guaranteed (e.g., fields retrieved from a database).
+func SafeSlice(s string, n int) (string, error) {
+	if len(s) < n {
+		return "", fmt.Errorf("string too short: len=%d < %d", len(s), n)
+	}
+	return s[:n], nil
 }

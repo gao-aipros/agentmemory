@@ -18,7 +18,7 @@ func TestSlotService_Expiry(t *testing.T) {
 	require.NoError(t, err)
 
 	// Slot should exist now
-	_, err = svc.GetSlot(ctx, "test-expire")
+	_, err = svc.GetSlot(ctx, "test-expire", "global", "")
 	require.NoError(t, err)
 
 	// Wait for expiry
@@ -29,7 +29,7 @@ func TestSlotService_Expiry(t *testing.T) {
 	assert.Equal(t, 1, removed, "expired slot should be removed")
 
 	// Slot should be gone
-	_, err = svc.GetSlot(ctx, "test-expire")
+	_, err = svc.GetSlot(ctx, "test-expire", "global", "")
 	assert.Error(t, err, "expired slot should not be found")
 }
 
@@ -49,7 +49,7 @@ func TestSlotService_PinnedNeverExpires(t *testing.T) {
 	assert.Equal(t, 0, removed, "pinned slot should not be removed")
 
 	// Slot should still exist
-	_, err = svc.GetSlot(ctx, "pinned-slot")
+	_, err = svc.GetSlot(ctx, "pinned-slot", "global", "")
 	assert.NoError(t, err, "pinned slot should still exist")
 }
 
@@ -70,7 +70,7 @@ func TestSlotService_CleanupLoop(t *testing.T) {
 	time.Sleep(150 * time.Millisecond)
 
 	// Slot should be gone after loop cleans it
-	_, err = svc.GetSlot(ctx, "loop-expire")
+	_, err = svc.GetSlot(ctx, "loop-expire", "global", "")
 	assert.Error(t, err, "slot should be cleaned up by background loop")
 }
 
@@ -90,7 +90,7 @@ func TestSlotService_CleanupLoopCancel(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Slot should still exist (loop cancelled before cleanup)
-	_, err = svc.GetSlot(ctx, "cancel-expire")
+	_, err = svc.GetSlot(ctx, "cancel-expire", "global", "")
 	assert.NoError(t, err, "slot should still exist after loop cancelled")
 }
 
@@ -158,4 +158,34 @@ func TestSlotService_ExpiresAtNotSetOnPinned(t *testing.T) {
 	slot, err := svc.CreateSlot(ctx, "no-expiry", "content", "", "global", "", true, 100)
 	require.NoError(t, err)
 	assert.Nil(t, slot.ExpiresAt, "pinned slot should have nil ExpiresAt")
+}
+
+func TestSlotService_SlotKeyCollisionAcrossScopes(t *testing.T) {
+	svc := NewSlotService(nil)
+	ctx := context.Background()
+
+	// Create a global slot "x".
+	_, err := svc.CreateSlot(ctx, "x", "global-content", "", "global", "", false, 100)
+	require.NoError(t, err)
+
+	// Create a project-scoped slot "x" for "proj-a" — should NOT collide with global.
+	_, err = svc.CreateSlot(ctx, "x", "project-content", "", "project", "proj-a", false, 100)
+	require.NoError(t, err, "project-scoped slot should not collide with global slot of same label")
+
+	// Both should exist independently.
+	globalContent, err := svc.GetSlot(ctx, "x", "global", "")
+	require.NoError(t, err)
+	assert.Equal(t, "global-content", globalContent, "global slot content should be preserved")
+
+	projContent, err := svc.GetSlot(ctx, "x", "project", "proj-a")
+	require.NoError(t, err)
+	assert.Equal(t, "project-content", projContent, "project-scoped slot content should be preserved")
+
+	// A second project-scoped slot "x" for "proj-b" should also work independently.
+	_, err = svc.CreateSlot(ctx, "x", "other-content", "", "project", "proj-b", false, 100)
+	require.NoError(t, err)
+
+	otherContent, err := svc.GetSlot(ctx, "x", "project", "proj-b")
+	require.NoError(t, err)
+	assert.Equal(t, "other-content", otherContent, "different project's slot content should be independent")
 }

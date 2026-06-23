@@ -26,12 +26,19 @@ type Slot struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
+// slotKey returns a composite key that includes scope and project to prevent
+// collisions between slots with the same label across different scopes.
+// Key format: "{scope}:{project}:{label}"
+func slotKey(scope, project, label string) string {
+	return scope + ":" + project + ":" + label
+}
+
 // SlotService manages working-memory slots. MVP uses an in-memory map.
 // Future versions will persist slots to the database.
 type SlotService struct {
 	pool       *pgxpool.Pool
 	mu         sync.RWMutex
-	slots      map[string]*Slot // keyed by label
+	slots      map[string]*Slot // keyed by slotKey(scope, project, label)
 	DefaultTTL time.Duration    // TTL for new non-pinned slots (default 7 days)
 	MaxSlots   int              // max in-memory slots (0 = unlimited)
 }
@@ -70,9 +77,10 @@ func (s *SlotService) CreateSlot(ctx context.Context, label, content, descriptio
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Check for duplicate label. We key only by label in the MVP store.
-	if _, exists := s.slots[label]; exists {
-		return nil, fmt.Errorf("slot with label %q already exists", label)
+	// Check for duplicate label+scope+project.
+	key := slotKey(scope, project, label)
+	if _, exists := s.slots[key]; exists {
+		return nil, fmt.Errorf("slot with label %q already exists in scope %q", label, scope)
 	}
 
 	// Evict expired slots first if at capacity.
@@ -102,21 +110,25 @@ func (s *SlotService) CreateSlot(ctx context.Context, label, content, descriptio
 		slot.ExpiresAt = &expires
 	}
 
-	s.slots[label] = slot
+	s.slots[key] = slot
 
 	return slot, nil
 }
 
 // GetSlot returns the content of a named slot, or an empty string if not found.
-func (s *SlotService) GetSlot(ctx context.Context, label string) (string, error) {
+func (s *SlotService) GetSlot(ctx context.Context, label, scope, project string) (string, error) {
 	if label == "" {
 		return "", fmt.Errorf("label is required")
+	}
+	if scope == "" {
+		scope = "global"
 	}
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	slot, ok := s.slots[label]
+	key := slotKey(scope, project, label)
+	slot, ok := s.slots[key]
 	if !ok {
 		return "", fmt.Errorf("slot %q not found", label)
 	}
@@ -147,15 +159,19 @@ func (s *SlotService) ListSlots(ctx context.Context, project string) ([]Slot, er
 
 // ReplaceSlot replaces the entire content of a slot. Returns an error if
 // the new content exceeds the slot's sizeLimit or if the slot does not exist.
-func (s *SlotService) ReplaceSlot(ctx context.Context, label, content string) error {
+func (s *SlotService) ReplaceSlot(ctx context.Context, label, content, scope, project string) error {
 	if label == "" {
 		return fmt.Errorf("label is required")
+	}
+	if scope == "" {
+		scope = "global"
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	slot, ok := s.slots[label]
+	key := slotKey(scope, project, label)
+	slot, ok := s.slots[key]
 	if !ok {
 		return fmt.Errorf("slot %q not found", label)
 	}
@@ -170,29 +186,36 @@ func (s *SlotService) ReplaceSlot(ctx context.Context, label, content string) er
 	return nil
 }
 
-// DeleteSlot removes a slot by label. Returns an error if the slot does not exist.
-func (s *SlotService) DeleteSlot(ctx context.Context, label string) error {
+// DeleteSlot removes a slot by label, scope, and project. Returns an error if the slot does not exist.
+func (s *SlotService) DeleteSlot(ctx context.Context, label, scope, project string) error {
 	if label == "" {
 		return fmt.Errorf("label is required")
+	}
+	if scope == "" {
+		scope = "global"
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, ok := s.slots[label]; !ok {
+	key := slotKey(scope, project, label)
+	if _, ok := s.slots[key]; !ok {
 		return fmt.Errorf("slot %q not found", label)
 	}
 
-	delete(s.slots, label)
+	delete(s.slots, key)
 
 	return nil
 }
 
 // AppendSlot appends text to an existing slot's content. Returns an error if
 // the append would exceed the slot's sizeLimit or if the slot does not exist.
-func (s *SlotService) AppendSlot(ctx context.Context, label, text string) error {
+func (s *SlotService) AppendSlot(ctx context.Context, label, text, scope, project string) error {
 	if label == "" {
 		return fmt.Errorf("label is required")
+	}
+	if scope == "" {
+		scope = "global"
 	}
 	if text == "" {
 		return nil // nothing to append
@@ -201,7 +224,8 @@ func (s *SlotService) AppendSlot(ctx context.Context, label, text string) error 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	slot, ok := s.slots[label]
+	key := slotKey(scope, project, label)
+	slot, ok := s.slots[key]
 	if !ok {
 		return fmt.Errorf("slot %q not found", label)
 	}
@@ -229,12 +253,12 @@ func (s *SlotService) CleanupExpired(ctx context.Context) int {
 func (s *SlotService) cleanupExpiredLocked() int {
 	now := time.Now().UTC()
 	removed := 0
-	for label, slot := range s.slots {
+	for key, slot := range s.slots {
 		if slot.Pinned || slot.ExpiresAt == nil {
 			continue
 		}
 		if now.After(*slot.ExpiresAt) {
-			delete(s.slots, label)
+			delete(s.slots, key)
 			removed++
 		}
 	}

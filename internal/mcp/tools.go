@@ -1087,11 +1087,21 @@ func registerAuthCreateKey(mcpServer *mcp.Server, svc *ServiceBundle) {
 			}, nil
 		}
 
+		idPrefix, err := auth.SafeSlice(apiKey.ID, 8)
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, nil
+		}
+
 		return jsonResult(map[string]interface{}{
 			"key_id":   apiKey.ID,
 			"label":    apiKey.Label,
 			"full_key": fullKey,
-			"prefix":   apiKey.ID[:8],
+			"prefix":   idPrefix,
 			"status":   "created",
 			"warning":  "Store this key securely. The full key will not be shown again.",
 		})
@@ -1791,7 +1801,11 @@ func registerMemorySlotGet(mcpServer *mcp.Server, svc *ServiceBundle) {
 			return nil, err
 		}
 
-		content, err := svc.Slot.GetSlot(ctx, a.Label)
+		scope, project := "global", a.Project
+		if a.Project != "" {
+			scope = "project"
+		}
+		content, err := svc.Slot.GetSlot(ctx, a.Label, scope, project)
 		if err != nil {
 			return &mcp.CallToolResult{
 				IsError: true,
@@ -1871,7 +1885,11 @@ func registerMemorySlotReplace(mcpServer *mcp.Server, svc *ServiceBundle) {
 			return nil, err
 		}
 
-		if err := svc.Slot.ReplaceSlot(ctx, a.Label, a.Content); err != nil {
+		scope, project := "global", a.Project
+		if a.Project != "" {
+			scope = "project"
+		}
+		if err := svc.Slot.ReplaceSlot(ctx, a.Label, a.Content, scope, project); err != nil {
 			return &mcp.CallToolResult{
 				IsError: true,
 				Content: []mcp.Content{
@@ -1910,7 +1928,11 @@ func registerMemorySlotDelete(mcpServer *mcp.Server, svc *ServiceBundle) {
 			return nil, err
 		}
 
-		if err := svc.Slot.DeleteSlot(ctx, a.Label); err != nil {
+		scope, project := "global", a.Project
+		if a.Project != "" {
+			scope = "project"
+		}
+		if err := svc.Slot.DeleteSlot(ctx, a.Label, scope, project); err != nil {
 			return &mcp.CallToolResult{
 				IsError: true,
 				Content: []mcp.Content{
@@ -1951,7 +1973,11 @@ func registerMemorySlotAppend(mcpServer *mcp.Server, svc *ServiceBundle) {
 			return nil, err
 		}
 
-		if err := svc.Slot.AppendSlot(ctx, a.Label, a.Text); err != nil {
+		scope, project := "global", a.Project
+		if a.Project != "" {
+			scope = "project"
+		}
+		if err := svc.Slot.AppendSlot(ctx, a.Label, a.Text, scope, project); err != nil {
 			return &mcp.CallToolResult{
 				IsError: true,
 				Content: []mcp.Content{

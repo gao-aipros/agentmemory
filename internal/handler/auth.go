@@ -231,10 +231,15 @@ func (h *AuthHandler) HandleListAPIKeys(w http.ResponseWriter, r *http.Request) 
 
 	response := make([]apiKeyResponse, 0, len(keys))
 	for _, k := range keys {
+		prefixPart, err := auth.SafeSlice(k.KeyHash, auth.APIKeyPrefixLength)
+		if err != nil {
+			slog.Error("API key has invalid hash, skipping", "key_id", k.ID, "error", err)
+			continue
+		}
 		akr := apiKeyResponse{
 			ID:        k.ID,
 			Label:     k.Label,
-			Prefix:    auth.APIKeyPrefix + k.KeyHash[:auth.APIKeyPrefixLength],
+			Prefix:    auth.APIKeyPrefix + prefixPart,
 			CreatedAt: k.CreatedAt.Time.Format(time.RFC3339),
 		}
 		if k.LastUsedAt.Valid {
@@ -293,10 +298,17 @@ func (h *AuthHandler) HandleCreateAPIKey(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	prefixPart, err := auth.SafeSlice(apiKey.KeyHash, auth.APIKeyPrefixLength)
+	if err != nil {
+		slog.Error("newly created API key has invalid hash", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to create API key")
+		return
+	}
+
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"id":       apiKey.ID,
 		"label":    apiKey.Label,
-		"prefix":   auth.APIKeyPrefix + apiKey.KeyHash[:auth.APIKeyPrefixLength],
+		"prefix":   auth.APIKeyPrefix + prefixPart,
 		"full_key": fullKey,
 	})
 }
