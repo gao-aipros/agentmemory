@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -19,24 +20,29 @@ type Slot struct {
 	Scope       string    `json:"scope"`   // "global" or "project"
 	Project     string    `json:"project"` // project name when scope is "project"
 	SizeLimit   int       `json:"size_limit"`
-	Pinned      bool      `json:"pinned"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	Pinned      bool       `json:"pinned"`
+	ExpiresAt   *time.Time `json:"expires_at,omitempty"` // nil = never expires (pinned slots)
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
 // SlotService manages working-memory slots. MVP uses an in-memory map.
 // Future versions will persist slots to the database.
 type SlotService struct {
-	pool  *pgxpool.Pool
-	mu    sync.RWMutex
-	slots map[string]*Slot // keyed by label
+	pool       *pgxpool.Pool
+	mu         sync.RWMutex
+	slots      map[string]*Slot // keyed by label
+	DefaultTTL time.Duration    // TTL for new non-pinned slots (default 7 days)
+	MaxSlots   int              // max in-memory slots (0 = unlimited)
 }
 
 // NewSlotService creates a new SlotService.
 func NewSlotService(pool *pgxpool.Pool) *SlotService {
 	return &SlotService{
-		pool:  pool,
-		slots: make(map[string]*Slot),
+		pool:       pool,
+		slots:      make(map[string]*Slot),
+		DefaultTTL: 7 * 24 * time.Hour, // 7 days
+		MaxSlots:   0,                   // unlimited
 	}
 }
 
@@ -69,6 +75,14 @@ func (s *SlotService) CreateSlot(ctx context.Context, label, content, descriptio
 		return nil, fmt.Errorf("slot with label %q already exists", label)
 	}
 
+	// Evict expired slots first if at capacity.
+	if s.MaxSlots > 0 && len(s.slots) >= s.MaxSlots {
+		s.cleanupExpiredLocked()
+		if len(s.slots) >= s.MaxSlots {
+			return nil, fmt.Errorf("max slots (%d) reached and no expired slots to evict", s.MaxSlots)
+		}
+	}
+
 	now := time.Now().UTC()
 	slot := &Slot{
 		Label:       label,
@@ -80,6 +94,12 @@ func (s *SlotService) CreateSlot(ctx context.Context, label, content, descriptio
 		Pinned:      pinned,
 		CreatedAt:   now,
 		UpdatedAt:   now,
+	}
+
+	// Set expiry for non-pinned slots.
+	if !pinned && s.DefaultTTL > 0 {
+		expires := now.Add(s.DefaultTTL)
+		slot.ExpiresAt = &expires
 	}
 
 	s.slots[label] = slot
@@ -196,6 +216,53 @@ func (s *SlotService) AppendSlot(ctx context.Context, label, text string) error 
 	slot.UpdatedAt = time.Now().UTC()
 
 	return nil
+}
+
+// CleanupExpired removes all expired, non-pinned slots. Returns the count removed.
+func (s *SlotService) CleanupExpired(ctx context.Context) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cleanupExpiredLocked()
+}
+
+// cleanupExpiredLocked removes expired slots. Caller must hold s.mu.Lock().
+func (s *SlotService) cleanupExpiredLocked() int {
+	now := time.Now().UTC()
+	removed := 0
+	for label, slot := range s.slots {
+		if slot.Pinned || slot.ExpiresAt == nil {
+			continue
+		}
+		if now.After(*slot.ExpiresAt) {
+			delete(s.slots, label)
+			removed++
+		}
+	}
+	return removed
+}
+
+// StartCleanupLoop runs a background goroutine that calls CleanupExpired
+// at the given interval. Stops when ctx is cancelled.
+func (s *SlotService) StartCleanupLoop(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		interval = 1 * time.Hour
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				slog.Debug("slot cleanup loop stopped", "reason", ctx.Err())
+				return
+			case <-ticker.C:
+				removed := s.CleanupExpired(ctx)
+				if removed > 0 {
+					slog.Debug("slot cleanup removed expired", "count", removed)
+				}
+			}
+		}
+	}()
 }
 
 // generateSlotID generates a UUID string for slot identification (reserved

@@ -130,6 +130,7 @@ type ConsolidationService struct {
 	queries    *store.Queries
 	llmService *LLMService
 	mode       ConsolidationMode
+	pool       *pgxpool.Pool // for batch inserts
 }
 
 // NewConsolidationService creates a new ConsolidationService.
@@ -138,6 +139,7 @@ func NewConsolidationService(pool *pgxpool.Pool, llm *LLMService, mode Consolida
 		queries:    store.New(pool),
 		llmService: llm,
 		mode:       mode,
+		pool:       pool,
 	}
 }
 
@@ -177,46 +179,45 @@ func (s *ConsolidationService) ConsolidateSession(ctx context.Context, sessionID
 		return fmt.Errorf("failed to parse consolidation response: %w", err)
 	}
 
-	// Store extracted memories
-	for _, m := range result.Memories {
-		memID := uuid.New().String()
+	// Store extracted memories via batch insert (avoids N+1 writes).
+	if len(result.Memories) > 0 {
 		visibility := "private"
 		if s.mode.Visibility == VisibilityTeam {
 			visibility = "team"
 		} else if s.mode.Visibility == VisibilityPublic {
 			visibility = "public"
 		}
-
-		_, err := s.queries.InsertMemory(ctx, store.InsertMemoryParams{
-			ID:          memID,
-			OwnerType:   "user",
-			OwnerUserID: nilString(s.mode.OwnerUserID),
-			OwnerTeamID: nilString(s.mode.OwnerTeamID),
-			Visibility:  visibility,
-			Content:     m.Content,
-			Concepts:    m.Concepts,
-			Source:      "consolidation",
-			Confidence:  0.5,
-		})
-		if err != nil {
-			slog.Warn("failed to insert memory", "error", err)
+		memories := make([]memoryRow, 0, len(result.Memories))
+		for _, m := range result.Memories {
+			memories = append(memories, memoryRow{
+				id:         uuid.New().String(),
+				content:    m.Content,
+				concepts:   m.Concepts,
+				source:     "consolidation",
+				confidence: 0.5,
+			})
+		}
+		if err := s.batchInsertMemories(ctx, memories, s.mode.OwnerUserID, s.mode.OwnerTeamID, visibility); err != nil {
+			slog.Warn("failed to batch insert memories", "error", err)
 		}
 	}
 
-	// Store extracted lessons
-	for _, l := range result.Lessons {
-		lessonID := uuid.New().String()
-		_, err := s.queries.InsertLesson(ctx, store.InsertLessonParams{
-			ID:         lessonID,
-			TeamID:     nilString(s.mode.OwnerTeamID),
-			Visibility: "team",
-			Content:    l.Content,
-			Context:    nilString(l.Context),
-			Confidence: 0.5,
-			Source:     "consolidation",
-		})
-		if err != nil {
-			slog.Warn("failed to insert lesson", "error", err)
+	// Store extracted lessons via batch insert (avoids N+1 writes).
+	if len(result.Lessons) > 0 {
+		lessons := make([]lessonRow, 0, len(result.Lessons))
+		for _, l := range result.Lessons {
+			lessons = append(lessons, lessonRow{
+				id:         uuid.New().String(),
+				teamID:     s.mode.OwnerTeamID,
+				visibility: "team",
+				content:    l.Content,
+				context:    l.Context,
+				confidence: 0.5,
+				source:     "consolidation",
+			})
+		}
+		if err := s.batchInsertLessons(ctx, lessons); err != nil {
+			slog.Warn("failed to batch insert lessons", "error", err)
 		}
 	}
 
@@ -367,4 +368,91 @@ func (s *ReflectionService) TriggerTimerCheck(ctx context.Context) {
 	if err := s.RunReflection(ctx, "", 10); err != nil {
 		slog.Warn("reflection run failed", "error", err)
 	}
+}
+
+// memoryRow and lessonRow are row types for batch inserts, avoiding N+1 writes.
+type memoryRow struct {
+	id         string
+	content    string
+	concepts   []string
+	source     string
+	confidence float64
+}
+
+type lessonRow struct {
+	id         string
+	teamID     string
+	visibility string
+	content    string
+	context    string
+	confidence float64
+	source     string
+}
+
+// batchInsertMemories inserts multiple memories in a single multi-row INSERT.
+func (s *ConsolidationService) batchInsertMemories(ctx context.Context, rows []memoryRow, ownerUserID, ownerTeamID, visibility string) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	if s.pool == nil {
+		return fmt.Errorf("consolidation service pool is nil")
+	}
+
+	values := make([]string, len(rows))
+	args := make([]any, 0, len(rows)*9)
+
+	for i, r := range rows {
+		base := i * 9
+		values[i] = fmt.Sprintf(
+			"($%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d)",
+			base+1, base+2, base+3, base+4, base+5, base+6, base+7, base+8, base+9,
+		)
+		args = append(args,
+			r.id, "user", ownerUserID, ownerTeamID,
+			visibility, r.content, r.concepts, r.source, r.confidence,
+		)
+	}
+
+	query := fmt.Sprintf(
+		`INSERT INTO memories (id, owner_type, owner_user_id, owner_team_id, visibility, content, concepts, source, confidence)
+		 VALUES %s`,
+		strings.Join(values, ", "),
+	)
+
+	_, err := s.pool.Exec(ctx, query, args...)
+	return err
+}
+
+// batchInsertLessons inserts multiple lessons in a single multi-row INSERT.
+func (s *ConsolidationService) batchInsertLessons(ctx context.Context, rows []lessonRow) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	if s.pool == nil {
+		return fmt.Errorf("consolidation service pool is nil")
+	}
+
+	values := make([]string, len(rows))
+	args := make([]any, 0, len(rows)*8)
+
+	for i, r := range rows {
+		base := i * 8
+		values[i] = fmt.Sprintf(
+			"($%d,$%d,$%d,$%d,$%d,$%d,$%d,now())",
+			base+1, base+2, base+3, base+4, base+5, base+6, base+7,
+		)
+		args = append(args,
+			r.id, r.teamID, r.visibility,
+			r.content, r.context, r.confidence, r.source,
+		)
+	}
+
+	query := fmt.Sprintf(
+		`INSERT INTO lessons (id, team_id, visibility, content, context, confidence, source, created_at)
+		 VALUES %s`,
+		strings.Join(values, ", "),
+	)
+
+	_, err := s.pool.Exec(ctx, query, args...)
+	return err
 }
