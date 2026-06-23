@@ -152,6 +152,11 @@ Use --migrate-on-startup to auto-apply pending migrations.`,
 				slog.Error("HTTP server shutdown error", "error", err)
 			}
 
+			// Wait for in-flight pipeline goroutines to drain before closing
+			// the database connection pool.
+			slog.Info("waiting for memory pipeline goroutines to drain")
+			bundle.SessionEnd.Wait()
+
 			slog.Info("AgentMemory v2 stopped")
 			return nil
 		},
