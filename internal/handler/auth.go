@@ -39,8 +39,9 @@ type loginRequest struct {
 
 // loginResponse is the JSON response for a successful login.
 type loginResponse struct {
-	Token string       `json:"token"`
-	User  userResponse `json:"user"`
+	Token     string       `json:"token"`
+	ExpiresAt string       `json:"expires_at"`
+	User      userResponse `json:"user"`
 }
 
 type userResponse struct {
@@ -108,6 +109,7 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, loginResponse{
 		Token: token,
+		ExpiresAt: time.Now().Add(h.cfg.JWTExpiry).Format(time.RFC3339),
 		User: userResponse{
 			ID:    user.ID,
 			Email: user.Email,
@@ -159,6 +161,7 @@ func (h *AuthHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusCreated, loginResponse{
 		Token: token,
+		ExpiresAt: time.Now().Add(h.cfg.JWTExpiry).Format(time.RFC3339),
 		User: userResponse{
 			ID:    user.ID,
 			Email: user.Email,
@@ -253,7 +256,7 @@ func (h *AuthHandler) HandleListAPIKeys(w http.ResponseWriter, r *http.Request) 
 		response = append(response, akr)
 	}
 
-	writeJSON(w, http.StatusOK, response)
+	writeJSON(w, http.StatusOK, map[string]any{"keys": response})
 }
 
 // createAPIKeyRequest is the JSON body for POST /v1/auth/keys.
@@ -267,7 +270,7 @@ type createAPIKeyResponse struct {
 	ID       string `json:"id"`
 	Label    string `json:"label"`
 	Prefix   string `json:"prefix"`
-	FullKey  string `json:"full_key"`
+	Key      string `json:"key"`
 	KeyHash  string `json:"-"`
 }
 
@@ -309,7 +312,7 @@ func (h *AuthHandler) HandleCreateAPIKey(w http.ResponseWriter, r *http.Request)
 		"id":       apiKey.ID,
 		"label":    apiKey.Label,
 		"prefix":   auth.APIKeyPrefix + prefixPart,
-		"full_key": fullKey,
+		"key": fullKey,
 	})
 }
 

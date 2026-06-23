@@ -132,8 +132,10 @@ type endSessionRequest struct {
 
 // endSessionResponse is the JSON response for a successful session end.
 type endSessionResponse struct {
-	SessionID string `json:"session_id"`
-	Status    string `json:"status"`
+	SessionID            string `json:"session_id"`
+	Status               string `json:"status"`
+	SummaryQueued        bool   `json:"summary_queued"`
+	ConsolidationQueued  bool   `json:"consolidation_queued"`
 }
 
 // HandleEndSession handles POST /v1/api/session/end — end a session and trigger the memory pipeline.
@@ -161,8 +163,10 @@ func (h *RESTHandler) HandleEndSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, endSessionResponse{
-		SessionID: req.SessionID,
-		Status:    "ended",
+		SessionID:           req.SessionID,
+		Status:              "ended",
+		SummaryQueued:       true,
+		ConsolidationQueued: true,
 	})
 }
 
@@ -177,7 +181,7 @@ type commitRequest struct {
 // commitResponse is the JSON response for a successful commit link.
 type commitResponse struct {
 	SessionID string `json:"session_id"`
-	SHA       string `json:"sha"`
+	CommitSHA  string `json:"commit_sha"`
 	Status    string `json:"status"`
 }
 
@@ -245,7 +249,7 @@ func (h *RESTHandler) HandleCommitSession(w http.ResponseWriter, r *http.Request
 
 	writeJSON(w, http.StatusOK, commitResponse{
 		SessionID: req.SessionID,
-		SHA:       req.SHA,
+		CommitSHA:  req.SHA,
 		Status:    "linked",
 	})
 }

@@ -364,6 +364,7 @@ func registerMemoryObserve(mcpServer *mcp.Server, svc *ServiceBundle) {
 
 		return jsonResult(map[string]interface{}{
 			"observation_id": obs.ID,
+			"session_id":     a.SessionID,
 			"status":         "recorded",
 		})
 	})
