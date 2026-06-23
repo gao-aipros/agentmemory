@@ -102,3 +102,86 @@ func TestHandleCommitSession_Validation(t *testing.T) {
 		})
 	}
 }
+
+// =============================================================================
+// #45: Session/end response missing summary_queued and consolidation_queued
+// =============================================================================
+
+// TestEndSessionResponse_HasQueueFields verifies that endSessionResponse JSON
+// includes summary_queued and consolidation_queued boolean fields.
+func TestEndSessionResponse_HasQueueFields(t *testing.T) {
+	resp := endSessionResponse{
+		SessionID: "sess-1",
+		Status:    "ended",
+	}
+
+	data, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("failed to marshal endSessionResponse: %v", err)
+	}
+
+	var decoded map[string]interface{}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal JSON: %v", err)
+	}
+
+	// Verify summary_queued field exists
+	sq, ok := decoded["summary_queued"]
+	if !ok {
+		t.Fatal("endSessionResponse JSON missing required field: summary_queued")
+	}
+	if _, isBool := sq.(bool); !isBool {
+		t.Fatalf("summary_queued should be a bool, got %T", sq)
+	}
+
+	// Verify consolidation_queued field exists
+	cq, ok := decoded["consolidation_queued"]
+	if !ok {
+		t.Fatal("endSessionResponse JSON missing required field: consolidation_queued")
+	}
+	if _, isBool := cq.(bool); !isBool {
+		t.Fatalf("consolidation_queued should be a bool, got %T", cq)
+	}
+}
+
+// =============================================================================
+// #46: Session/commit response — sha → commit_sha
+// =============================================================================
+
+// TestCommitResponse_UsesCommitSHA verifies that commitResponse JSON uses
+// "commit_sha" field name instead of "sha".
+//
+// This test does NOT reference the Go field name (SHA or CommitSHA) — it only
+// checks JSON output keys, so it compiles both before and after the struct change.
+func TestCommitResponse_UsesCommitSHA(t *testing.T) {
+	resp := commitResponse{
+		SessionID: "sess-1",
+		Status:    "linked",
+	}
+
+	data, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("failed to marshal commitResponse: %v", err)
+	}
+
+	var decoded map[string]interface{}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal JSON: %v", err)
+	}
+
+	// Must have "commit_sha" field
+	// Before fix: struct has SHA (json:"sha"), no CommitSHA.
+	//   → "commit_sha" key does NOT exist in JSON → FAIL
+	// After fix:  struct has CommitSHA (json:"commit_sha"), no SHA.
+	//   → "commit_sha" key exists in JSON → PASS
+	if _, ok := decoded["commit_sha"]; !ok {
+		t.Fatal("commitResponse JSON must have 'commit_sha' field (not 'sha')")
+	}
+
+	// Must NOT have "sha" field (old name)
+	// Before fix: "sha" key exists in JSON → FAIL
+	// After fix:  "sha" key does NOT exist in JSON → PASS
+	if _, ok := decoded["sha"]; ok {
+		t.Fatal("commitResponse JSON must NOT have 'sha' field (renamed to 'commit_sha')")
+	}
+}
