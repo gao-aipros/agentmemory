@@ -179,6 +179,23 @@ func TestGraphTraversalParams_RequiresOwnerUserID(t *testing.T) {
 // parameters include a TeamID field for cross-tenant isolation.
 // This is a compile-time assertion: if the type or field does not exist,
 // this test will not compile (RED phase).
+// =============================================================================
+// VectorSearch Nil Embedding Guard Tests (Issue #92)
+// =============================================================================
+
+// TestVectorSearch_NilEmbedding verifies that VectorSearch returns an error
+// when called with a nil embedding, rather than passing nil to pgvector.
+func TestVectorSearch_NilEmbedding(t *testing.T) {
+	q := &store.Queries{} // nil db — nil check happens before db query
+	_, err := q.VectorSearch(nil, store.VectorSearchParams{
+		Embedding:   nil,
+		OwnerUserID: nil,
+		Limit:       10,
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "embedding must not be nil")
+}
+
 func TestListAllLessonsParams_RequiresTeamID(t *testing.T) {
 	// With a specific team — only returns lessons for that team.
 	teamID := "team-alpha"

@@ -2,10 +2,9 @@
 -- These indexes address N+1 query patterns and missing indexes on frequently filtered columns.
 
 -- Vector index for similarity search (prevents full table scan on vector search).
--- Uses IVFFlat for moderate dataset sizes; switch to HNSW for large-scale deployments.
-CREATE INDEX IF NOT EXISTS idx_obs_emb_ivfflat
-    ON observation_embeddings USING ivfflat (embedding vector_cosine_ops)
-    WITH (lists = 100);
+-- Uses HNSW for high-performance approximate nearest neighbor search.
+CREATE INDEX IF NOT EXISTS idx_obs_emb_hnsw
+    ON observation_embeddings USING hnsw (embedding vector_cosine_ops);
 
 -- Index on owner columns for visibility-filtered queries.
 CREATE INDEX IF NOT EXISTS idx_observations_owner_user_id ON observations(owner_user_id);

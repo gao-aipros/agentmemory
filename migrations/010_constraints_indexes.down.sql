@@ -15,7 +15,10 @@ DROP INDEX IF EXISTS uq_team_members_team_user;
 DROP INDEX IF EXISTS idx_observations_owner_user_timestamp;
 DROP INDEX IF EXISTS idx_observations_session_type;
 
--- #40: drop partial embedding index, recreate original full index
+-- #40: drop partial embedding index, recreate original full index.
+-- Restore the original migration 008 index (IVFFlat) regardless of which
+-- name was in effect when 010 was applied.
+DROP INDEX IF EXISTS idx_obs_emb_hnsw_ada002;
 DROP INDEX IF EXISTS idx_obs_emb_ivfflat_ada002;
 CREATE INDEX IF NOT EXISTS idx_obs_emb_ivfflat
     ON observation_embeddings USING ivfflat (embedding vector_cosine_ops)

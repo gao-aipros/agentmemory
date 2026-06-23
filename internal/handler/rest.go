@@ -182,7 +182,13 @@ type commitResponse struct {
 }
 
 // HandleCommitSession handles POST /v1/api/session/commit — link a git commit to a session.
+// The commit link is recorded as an observation of type post_commit.
 func (h *RESTHandler) HandleCommitSession(w http.ResponseWriter, r *http.Request) {
+	if h.obsSvc == nil {
+		writeError(w, http.StatusServiceUnavailable, "observation service not configured")
+		return
+	}
+
 	var req commitRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -198,8 +204,39 @@ func (h *RESTHandler) HandleCommitSession(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// In MVP, the commit link is recorded as an observation of type post_commit.
-	// Full commit tracking table will be added in a future phase.
+	// Derive ownership from auth context
+	ownerType := ""
+	ownerUserID := ""
+	if userID := GetUserIDFromContext(r.Context()); userID != "" {
+		ownerType = "user"
+		ownerUserID = userID
+	}
+
+	narrative := "Commit linked to session"
+	if req.Branch != "" {
+		narrative += " on branch " + req.Branch
+	}
+	narrative += ": " + req.SHA
+	if req.Message != "" {
+		narrative += " (" + req.Message + ")"
+	}
+
+	input := service.RecordObservationInput{
+		SessionID:   req.SessionID,
+		OwnerType:   ownerType,
+		OwnerUserID: ownerUserID,
+		Type:        "post_commit",
+		Title:       "Commit linked to session",
+		Narrative:   narrative,
+	}
+
+	_, err := h.obsSvc.RecordObservation(r.Context(), input)
+	if err != nil {
+		slog.Warn("failed to record commit observation", "error", err)
+		writeError(w, http.StatusBadRequest, "observation failed")
+		return
+	}
+
 	slog.Info("commit linked to session",
 		"session_id", req.SessionID,
 		"sha", req.SHA,
