@@ -58,6 +58,13 @@ func (h *SessionEndHandler) HandleSessionEnd(ctx context.Context, sessionID stri
 		return err
 	}
 
+	// Idempotency: if session was already ended (e.g., duplicate call),
+	// skip spawning a new pipeline goroutine.
+	if session.Status == "ended" {
+		slog.Debug("session already ended, skipping pipeline", "session_id", sessionID)
+		return nil
+	}
+
 	slog.Info("session ended, starting memory pipeline",
 		"session_id", sessionID,
 	)
