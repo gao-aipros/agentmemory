@@ -18,7 +18,10 @@ ALTER TABLE memories DROP CONSTRAINT IF EXISTS fk_memories_owner_user_id;
 ALTER TABLE memories ADD CONSTRAINT fk_memories_owner_user_id
     FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE SET NULL;
 
--- #40: Replace model-unaware ivfflat index with per-model partial HNSW indexes
+-- #40: Replace model-unaware index with per-model partial HNSW indexes.
+-- Drop both legacy (IVFFlat) and current (HNSW) names so this is idempotent
+-- regardless of which version of migration 008 was previously applied.
+DROP INDEX IF EXISTS idx_obs_emb_ivfflat;
 DROP INDEX IF EXISTS idx_obs_emb_hnsw;
 CREATE INDEX IF NOT EXISTS idx_obs_emb_hnsw_ada002
     ON observation_embeddings USING hnsw (embedding vector_cosine_ops)

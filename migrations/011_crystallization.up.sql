@@ -7,7 +7,7 @@
 CREATE TABLE IF NOT EXISTS crystals (
     id TEXT PRIMARY KEY,
     action_ids TEXT[] NOT NULL,
-    visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility = 'private'),
+    visibility TEXT NOT NULL DEFAULT 'private' CONSTRAINT chk_crystals_visibility CHECK (visibility = 'private'),
     narrative TEXT NOT NULL,
     files TEXT[],
     outcome TEXT,

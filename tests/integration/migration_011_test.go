@@ -14,7 +14,6 @@ import (
 
 // TestMigration011_CrystallizationTablesExist verifies that migration 011
 // creates the crystals, insights, and procedural_memories tables.
-// Expected to FAIL before migration 011 is created (RED phase).
 func TestMigration011_CrystallizationTablesExist(t *testing.T) {
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)
@@ -161,24 +160,27 @@ func TestMigration011_CrystalsVisibilityCheck(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Verify constraint exists
+	// Use check_constraints view to avoid picking up NOT NULL constraints
+	// which are also listed in table_constraints with constraint_type='CHECK'.
 	var constraintName string
 	err := db.Pool.QueryRow(ctx,
-		`SELECT constraint_name FROM information_schema.table_constraints
-		 WHERE table_schema = 'public' AND table_name = 'crystals'
-		 AND constraint_type = 'CHECK'`,
+		`SELECT constraint_name FROM information_schema.check_constraints
+		 WHERE constraint_schema = 'public'
+		 AND constraint_name = 'chk_crystals_visibility'`,
 	).Scan(&constraintName)
-	require.NoError(t, err, "crystals should have a CHECK constraint on visibility")
-	assert.Contains(t, constraintName, "visibility", "CHECK constraint should be on visibility column")
+	require.NoError(t, err, "crystals should have a named CHECK constraint chk_crystals_visibility")
+	assert.Equal(t, "chk_crystals_visibility", constraintName,
+		"CHECK constraint should be named chk_crystals_visibility")
 }
 
 // =============================================================================
-// Vector Index: HNSW Verification
+// Vector Index: HNSW Verification (tests migration 010, not 011)
 // =============================================================================
 
-// TestMigration011_VectorIndexHNSW verifies that the embedding vector index
-// uses the HNSW access method instead of IVFFlat.
-// Expected to FAIL before the fix (RED phase for issue #22).
+// TestMigration011_VectorIndexHNSW verifies that migration 010 creates the
+// embedding vector index using the HNSW access method instead of IVFFlat.
+// Note: this tests migration 010 behavior but lives alongside the migration
+// 011 table tests for convenience since both fix issues #21 and #22.
 func TestMigration011_VectorIndexHNSW(t *testing.T) {
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)
@@ -203,6 +205,7 @@ func TestMigration011_VectorIndexHNSW(t *testing.T) {
 
 // TestMigration011_VectorIndexHNSW_Definition checks the index definition
 // string contains USING hnsw.
+// Note: this tests migration 010 behavior (issue #22), not migration 011.
 func TestMigration011_VectorIndexHNSW_Definition(t *testing.T) {
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)
