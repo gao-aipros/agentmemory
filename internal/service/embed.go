@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/tmc/langchaingo/embeddings"
 	"github.com/tmc/langchaingo/llms/openai"
@@ -61,11 +62,21 @@ func (s *EmbeddingService) Embedder() embeddings.Embedder {
 }
 
 // GenerateEmbedding returns a vector embedding for the given text.
+// Uses RetryWithBackoff to handle transient API errors with exponential backoff.
 func (s *EmbeddingService) GenerateEmbedding(ctx context.Context, text string) ([]float32, error) {
 	if s.embedder == nil {
 		return nil, fmt.Errorf("embedding service not configured — set EMBEDDING_PROVIDER and required API key env vars")
 	}
-	return s.embedder.EmbedQuery(ctx, text)
+	var result []float32
+	err := RetryWithBackoff(ctx, 3, 500*time.Millisecond, 10*time.Second, func() error {
+		var innerErr error
+		result, innerErr = s.embedder.EmbedQuery(ctx, text)
+		return innerErr
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // resolveEmbeddingAPIKey returns the effective API key for embedding.

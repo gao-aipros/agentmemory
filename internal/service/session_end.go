@@ -83,6 +83,6 @@ func (h *SessionEndHandler) runPipeline(sessionID string) {
 
 	// Step 4: Trigger reflection timer check
 	if h.reflector != nil {
-		h.reflector.TriggerTimerCheck()
+		h.reflector.TriggerTimerCheck(bgCtx)
 	}
 }

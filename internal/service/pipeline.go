@@ -228,11 +228,64 @@ func (s *ConsolidationService) ConsolidateSession(ctx context.Context, sessionID
 	return nil
 }
 
+const (
+	// listAllMemories is a raw SQL query to fetch all memories ordered by recency.
+	listAllMemories = `SELECT id, owner_type, owner_user_id, owner_team_id, visibility, content, concepts, source, confidence, created_at FROM memories ORDER BY created_at DESC LIMIT $1`
+	// insertInsight is a raw SQL query to persist a synthesized insight.
+	insertInsight = `INSERT INTO insights (id, content, confidence, source, created_at) VALUES ($1, $2, $3, 'reflect', now())`
+)
+
+// reflectionQuerier is the subset of database operations needed by ReflectionService.
+// The concrete reflectionQuerierImpl satisfies this interface, enabling mock-based unit testing.
+type reflectionQuerier interface {
+	ListMemories(ctx context.Context, limit int32) ([]store.Memory, error)
+	InsertInsight(ctx context.Context, id string, content string, confidence float64) error
+}
+
+// reflectionQuerierImpl is the production implementation using a pgxpool.Pool.
+type reflectionQuerierImpl struct {
+	pool *pgxpool.Pool
+}
+
+// ListMemories fetches all memories from the database, ordered by recency, up to limit.
+func (r *reflectionQuerierImpl) ListMemories(ctx context.Context, limit int32) ([]store.Memory, error) {
+	rows, err := r.pool.Query(ctx, listAllMemories, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []store.Memory
+	for rows.Next() {
+		var i store.Memory
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerType,
+			&i.OwnerUserID,
+			&i.OwnerTeamID,
+			&i.Visibility,
+			&i.Content,
+			&i.Concepts,
+			&i.Source,
+			&i.Confidence,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	return items, rows.Err()
+}
+
+// InsertInsight persists a synthesized insight to the insights table.
+func (r *reflectionQuerierImpl) InsertInsight(ctx context.Context, id string, content string, confidence float64) error {
+	_, err := r.pool.Exec(ctx, insertInsight, id, content, confidence)
+	return err
+}
+
 // ReflectionService handles periodic reflection: clustering memories,
 // detecting patterns, and synthesizing insights.
 type ReflectionService struct {
-	queries *store.Queries
-	// timerInterval is the interval between reflection runs
+	queries       reflectionQuerier
 	timerInterval int // seconds
 }
 
@@ -242,15 +295,76 @@ func NewReflectionService(pool *pgxpool.Pool, timerIntervalSeconds int) *Reflect
 		timerIntervalSeconds = 3600 // default 1 hour
 	}
 	return &ReflectionService{
-		queries:       store.New(pool),
+		queries:       &reflectionQuerierImpl{pool: pool},
 		timerInterval: timerIntervalSeconds,
 	}
 }
 
+// newReflectionServiceWithQuerier creates a ReflectionService with a custom querier (for testing).
+func newReflectionServiceWithQuerier(q reflectionQuerier) *ReflectionService {
+	return &ReflectionService{
+		queries:       q,
+		timerInterval: 3600,
+	}
+}
+
+// RunReflection fetches memories from the database, groups them by shared concepts,
+// detects patterns, synthesizes insights, and persists them.
+func (s *ReflectionService) RunReflection(ctx context.Context, project string, maxClusters int) error {
+	// Fetch memories (up to 1000)
+	memories, err := s.queries.ListMemories(ctx, 1000)
+	if err != nil {
+		return fmt.Errorf("failed to list memories: %w", err)
+	}
+
+	if len(memories) == 0 {
+		slog.Info("no memories to reflect on")
+		return nil
+	}
+
+	// Convert store.Memory → MemoryForReflection
+	reflectionMemories := make([]MemoryForReflection, len(memories))
+	for i, m := range memories {
+		reflectionMemories[i] = MemoryForReflection{
+			ID:       m.ID,
+			Content:  m.Content,
+			Concepts: m.Concepts,
+		}
+	}
+
+	// Cluster memories by shared concepts
+	// Note: project and maxClusters are accepted for future LLM-based reflection
+	// but not yet used by the pure clustering functions.
+	clusters := GroupMemoriesByConcept(reflectionMemories)
+
+	// Detect patterns and synthesize insights for each cluster
+	var allInsights []SynthesizedInsight
+	for _, cluster := range clusters {
+		patterns := DetectPatterns(cluster)
+		insights := SynthesizeInsights(patterns)
+		allInsights = append(allInsights, insights...)
+	}
+
+	// Persist each insight
+	for _, insight := range allInsights {
+		if err := s.queries.InsertInsight(ctx, uuid.New().String(), insight.Content, insight.Confidence); err != nil {
+			slog.Warn("failed to persist insight", "error", err)
+		}
+	}
+
+	slog.Info("reflection complete",
+		"memories", len(memories),
+		"clusters", len(clusters),
+		"insights", len(allInsights),
+	)
+	return nil
+}
+
 // TriggerTimerCheck is called after consolidation to check if reflection
-// should run based on the timer interval.
-func (s *ReflectionService) TriggerTimerCheck() {
+// should run based on the timer interval. In MVP, it runs reflection on every call.
+func (s *ReflectionService) TriggerTimerCheck(ctx context.Context) {
 	slog.Debug("reflection timer check triggered")
-	// In MVP, reflection runs on-demand or via timer.
-	// Full periodic scheduling will be implemented in a future phase.
+	if err := s.RunReflection(ctx, "", 10); err != nil {
+		slog.Warn("reflection run failed", "error", err)
+	}
 }
