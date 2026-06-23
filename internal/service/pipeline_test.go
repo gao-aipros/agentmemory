@@ -38,6 +38,87 @@ func (m *mockModel) GenerateContent(ctx context.Context, messages []llms.Message
 
 // TestSummarizeSession_EmptyLLMResponse verifies that empty responses from the
 // LLM are gracefully skipped rather than silently appended to the summary.
+// mockReflectionQuerier implements reflectionQuerier for testing.
+type mockReflectionQuerier struct {
+	listMemories  func(ctx context.Context, limit int32) ([]store.Memory, error)
+	insertInsight func(ctx context.Context, id string, content string, confidence float64) error
+}
+
+func (m *mockReflectionQuerier) ListMemories(ctx context.Context, limit int32) ([]store.Memory, error) {
+	return m.listMemories(ctx, limit)
+}
+
+func (m *mockReflectionQuerier) InsertInsight(ctx context.Context, id string, content string, confidence float64) error {
+	return m.insertInsight(ctx, id, content, confidence)
+}
+
+// TestReflectionService_RunReflection_NoMemories verifies that RunReflection
+// handles an empty memories table gracefully.
+func TestReflectionService_RunReflection_NoMemories(t *testing.T) {
+	ctx := context.Background()
+
+	mockQ := &mockReflectionQuerier{
+		listMemories: func(ctx context.Context, limit int32) ([]store.Memory, error) {
+			return nil, nil
+		},
+		insertInsight: func(ctx context.Context, id string, content string, confidence float64) error {
+			t.Error("insertInsight should not be called when there are no memories")
+			return nil
+		},
+	}
+
+	svc := newReflectionServiceWithQuerier(mockQ)
+	err := svc.RunReflection(ctx, "", 10)
+	if err != nil {
+		t.Fatalf("RunReflection should not error with empty memories, got: %v", err)
+	}
+}
+
+// TestReflectionService_RunReflection_WithMemories verifies that RunReflection
+// produces insights from memories with shared concepts.
+func TestReflectionService_RunReflection_WithMemories(t *testing.T) {
+	ctx := context.Background()
+
+	var capturedInsights []struct {
+		content    string
+		confidence float64
+	}
+
+	mockQ := &mockReflectionQuerier{
+		listMemories: func(ctx context.Context, limit int32) ([]store.Memory, error) {
+			return []store.Memory{
+				{ID: "1", Content: "First memory about auth", Concepts: []string{"auth", "login"}},
+				{ID: "2", Content: "Second memory about auth", Concepts: []string{"auth", "login"}},
+				{ID: "3", Content: "Third memory about auth", Concepts: []string{"auth", "security"}},
+			}, nil
+		},
+		insertInsight: func(ctx context.Context, id string, content string, confidence float64) error {
+			capturedInsights = append(capturedInsights, struct {
+				content    string
+				confidence float64
+			}{content, confidence})
+			return nil
+		},
+	}
+
+	svc := newReflectionServiceWithQuerier(mockQ)
+	err := svc.RunReflection(ctx, "", 10)
+	if err != nil {
+		t.Fatalf("RunReflection should not error with memories, got: %v", err)
+	}
+
+	// All 3 memories share "auth", forming 1 cluster, which produces patterns
+	// for "auth" (freq=3) and "login" (freq=2), yielding 2 insights at confidence 0.3.
+	if len(capturedInsights) == 0 {
+		t.Fatal("expected at least one insight from 3 memories sharing concepts, got 0")
+	}
+	for _, in := range capturedInsights {
+		if in.confidence != 0.3 {
+			t.Errorf("expected confidence 0.3 for reflection insights, got %f", in.confidence)
+		}
+	}
+}
+
 func TestSummarizeSession_EmptyLLMResponse(t *testing.T) {
 	ctx := context.Background()
 

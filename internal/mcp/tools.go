@@ -1312,7 +1312,7 @@ func registerMemoryConsolidate(mcpServer *mcp.Server, svc *ServiceBundle) {
 			}, nil
 		}
 
-		svc.Reflection.TriggerTimerCheck()
+		svc.Reflection.TriggerTimerCheck(ctx)
 
 		return jsonResult(map[string]interface{}{
 			"session_id": sessionID,
@@ -1374,6 +1374,11 @@ func registerMemoryCrystallize(mcpServer *mcp.Server, svc *ServiceBundle) {
 }
 
 func registerMemoryReflect(mcpServer *mcp.Server, svc *ServiceBundle) {
+	type args struct {
+		Project     string   `json:"project,omitempty"`
+		MaxClusters *float64 `json:"max_clusters,omitempty"`
+	}
+
 	mcpServer.AddTool(&mcp.Tool{
 		Name:        "memory_reflect",
 		Description: "Traverse the knowledge graph, group related memories by concept clusters, and synthesize higher-order insights via LLM.",
@@ -1386,7 +1391,29 @@ func registerMemoryReflect(mcpServer *mcp.Server, svc *ServiceBundle) {
 			"required": []string{},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return stubbedToolResult("memory_reflect"), nil
+		var a args
+		if err := parseArguments(req, &a); err != nil {
+			return nil, err
+		}
+
+		maxClusters := 10
+		if a.MaxClusters != nil && *a.MaxClusters > 0 {
+			maxClusters = int(*a.MaxClusters)
+		}
+
+		if err := svc.Reflection.RunReflection(ctx, a.Project, maxClusters); err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, nil
+		}
+
+		return jsonResult(map[string]interface{}{
+			"status":  "reflection_complete",
+			"message": "Reflection pipeline completed successfully",
+		})
 	})
 }
 
