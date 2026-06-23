@@ -4,17 +4,33 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/agentmemory/agentmemory/internal/store"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// summarizationQuerier is the subset of *store.Queries methods used by SummarizationService.
+// The concrete *store.Queries satisfies this interface, enabling mock-based unit testing.
+type summarizationQuerier interface {
+	ListObservationsBySession(ctx context.Context, params store.ListObservationsBySessionParams) ([]store.Observation, error)
+	UpsertSessionSummary(ctx context.Context, params store.UpsertSessionSummaryParams) (store.SessionSummary, error)
+}
+
 // SummarizationService gathers session observations, chunks them if needed,
 // calls the LLM for summarization, and stores the SessionSummary.
 type SummarizationService struct {
-	queries    *store.Queries
+	queries    summarizationQuerier
 	llmService *LLMService
+}
+
+// newSummarizationServiceWithQuerier creates a SummarizationService with a custom querier (for testing).
+func newSummarizationServiceWithQuerier(q summarizationQuerier, llm *LLMService) *SummarizationService {
+	return &SummarizationService{
+		queries:    q,
+		llmService: llm,
+	}
 }
 
 // NewSummarizationService creates a new SummarizationService.
@@ -69,6 +85,10 @@ func (s *SummarizationService) SummarizeSession(ctx context.Context, sessionID s
 		response, err := s.llmService.Call(ctx, prompt)
 		if err != nil {
 			return fmt.Errorf("LLM summarization failed for chunk %d: %w", i, err)
+		}
+		if strings.TrimSpace(response) == "" {
+			slog.Warn("LLM returned empty response for chunk", "chunk", i)
+			continue
 		}
 		if i > 0 {
 			combinedSummary += "\n"
