@@ -92,6 +92,10 @@ func TestAuthRouting_APIKeyOnUIRoutes(t *testing.T) {
 func TestAuthRouting_PublicRoutesNoAuth(t *testing.T) {
 	r := handler.NewRouter(nil, nil)
 
+	// CSRF middleware requires a token for POST requests. Obtain one via a
+	// preliminary GET, then include it in subsequent state-changing requests.
+	csrfToken, csrfCookie := csrfTokenForRequest(t, r, "/")
+
 	tests := []struct {
 		method string
 		path   string
@@ -111,6 +115,8 @@ func TestAuthRouting_PublicRoutesNoAuth(t *testing.T) {
 			req := httptest.NewRequest(tc.method, tc.path, body)
 			if tc.method == "POST" {
 				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("X-CSRF-Token", csrfToken)
+				req.AddCookie(csrfCookie)
 			}
 			// No Authorization header
 
@@ -276,10 +282,13 @@ func TestHookEventImportanceValidation(t *testing.T) {
 // TestRESTEndSessionRequest validates session end request format.
 func TestRESTEndSessionRequest(t *testing.T) {
 	r := handler.NewRouter(nil, nil)
+	csrfToken, csrfCookie := csrfTokenForRequest(t, r, "/")
 
 	validBody := `{"session_id": "test-session-1"}`
 	req := httptest.NewRequest("POST", "/v1/api/session/end", bytes.NewBufferString(validBody))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-CSRF-Token", csrfToken)
+	req.AddCookie(csrfCookie)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -298,10 +307,13 @@ func TestRESTEndSessionRequest(t *testing.T) {
 // TestRESTCommitSessionRequest validates commit request format.
 func TestRESTCommitSessionRequest(t *testing.T) {
 	r := handler.NewRouter(nil, nil)
+	csrfToken, csrfCookie := csrfTokenForRequest(t, r, "/")
 
 	validBody := `{"session_id":"s1","sha":"abc123","branch":"main","message":"fix bug"}`
 	req := httptest.NewRequest("POST", "/v1/api/session/commit", bytes.NewBufferString(validBody))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-CSRF-Token", csrfToken)
+	req.AddCookie(csrfCookie)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -313,4 +325,24 @@ func TestRESTCommitSessionRequest(t *testing.T) {
 	require.NoError(t, err)
 	// With real pool: {"status":"linked"}. With nil pool: {"message":"..."}
 	// Both are valid 200 responses
+}
+
+// csrfTokenForRequest performs a GET request against the given handler to
+// obtain a CSRF token cookie, then returns the token value and cookie for
+// use in subsequent state-changing requests.
+func csrfTokenForRequest(t *testing.T, h http.Handler, path string) (string, *http.Cookie) {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "csrf_token" {
+			return c.Value, c
+		}
+	}
+
+	t.Fatal("GET request did not set csrf_token cookie")
+	return "", nil
 }
