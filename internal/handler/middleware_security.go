@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"bytes"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -16,7 +18,12 @@ import (
 )
 
 // htmlTagRegex matches HTML tags for basic XSS prevention via input sanitization.
-var htmlTagRegex = regexp.MustCompile(`<[^>]*>`)
+// Using (?i) flag for case-insensitive matching (<SCRIPT> / <script> / <ScRiPt> all match).
+var htmlTagRegex = regexp.MustCompile(`(?i)<[^>]*>`)
+
+// xssPatternRegex matches common XSS attack patterns case-insensitively.
+// Patterns: javascript: URIs, on* event handlers, data:text/html URIs.
+var xssPatternRegex = regexp.MustCompile(`(?i)javascript:|onerror=|onload=|onclick=|data:text/html`)
 
 // SanitizeInputMiddleware strips HTML tags from query parameters to provide
 // basic XSS prevention. It logs any sanitized inputs at DEBUG level (via log.Printf).
@@ -64,16 +71,58 @@ func SanitizeInputMiddleware(next http.Handler) http.Handler {
 
 // stripXSSPatterns removes common XSS attack patterns from a string.
 // This is a basic defense-in-depth measure; a WAF should be used for production.
+// Uses case-insensitive matching via xssPatternRegex to catch variants like
+// JAVASCRIPT:, OnError=, DATA:TEXT/HTML, etc.
 func stripXSSPatterns(s string) string {
-	// Remove javascript: protocol URIs
-	s = strings.ReplaceAll(s, "javascript:", "")
-	// Remove on* event handlers
-	s = strings.ReplaceAll(s, "onerror=", "")
-	s = strings.ReplaceAll(s, "onload=", "")
-	s = strings.ReplaceAll(s, "onclick=", "")
-	// Remove data: URIs used for XSS
-	s = strings.ReplaceAll(s, "data:text/html", "")
-	return s
+	return xssPatternRegex.ReplaceAllString(s, "")
+}
+
+// SanitizeJSONBodyMiddleware strips HTML tags and XSS patterns from JSON
+// request bodies. It reads the entire body, applies sanitization to the raw
+// text, and replaces the body with the sanitized version.
+//
+// Only POST, PUT, and PATCH requests with a JSON Content-Type are processed.
+// Non-JSON content types and GET/HEAD/OPTIONS requests pass through unchanged.
+func SanitizeJSONBodyMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Only sanitize request methods that may contain a body
+		switch r.Method {
+		case http.MethodPost, http.MethodPut, http.MethodPatch:
+			// continue
+		default:
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Only process JSON content types
+		ct := r.Header.Get("Content-Type")
+		if !strings.Contains(ct, "/json") && !strings.Contains(ct, "+json") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Read the full body
+		body, err := io.ReadAll(r.Body)
+		if err != nil || len(body) == 0 {
+			next.ServeHTTP(w, r)
+			return
+		}
+		r.Body.Close()
+
+		// Apply sanitization to raw body text
+		original := string(body)
+		cleaned := htmlTagRegex.ReplaceAllString(original, "")
+		cleaned = stripXSSPatterns(cleaned)
+
+		if cleaned != original {
+			r.Body = io.NopCloser(bytes.NewReader([]byte(cleaned)))
+			r.ContentLength = int64(len(cleaned))
+		} else {
+			r.Body = io.NopCloser(bytes.NewReader(body))
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 // RateLimitMiddleware enforces per-IP token bucket rate limiting using

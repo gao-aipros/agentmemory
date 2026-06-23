@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/agentmemory/agentmemory/internal/config"
@@ -57,9 +59,10 @@ If --password is not provided, you will be prompted securely.`,
 			}
 			if password == "" {
 				// Prompt for password if not provided via flag
-				fmt.Print("Enter password: ")
-				var pwd string
-				fmt.Scanln(&pwd)
+				pwd, err := promptPassword()
+				if err != nil {
+					return fmt.Errorf("failed to read password: %w", err)
+				}
 				if pwd == "" {
 					return fmt.Errorf("password is required")
 				}
@@ -97,4 +100,16 @@ If --password is not provided, you will be prompted securely.`,
 	cmd.Flags().StringVar(&name, "name", "", "User display name")
 
 	return cmd
+}
+
+// promptPassword prompts the user for a password and reads the full line
+// including internal spaces (unlike fmt.Scanln which truncates at whitespace).
+func promptPassword() (string, error) {
+	fmt.Print("Enter password: ")
+	reader := bufio.NewReader(os.Stdin)
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return "", fmt.Errorf("failed to read password: %w", err)
+	}
+	return strings.TrimRight(input, "\n"), nil
 }

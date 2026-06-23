@@ -10,11 +10,11 @@ docker compose up -d db
 
 # 2. Run database setup (migrations + admin user)
 go run cmd/agentmemory/main.go setup \
-  --db-url "postgres://postgres:agentmemory@localhost:5432/agentmemory?sslmode=disable"
+  --db-url "postgres://agentmemory:agentmemory@localhost:5432/agentmemory?sslmode=disable"
 
 # 3. Start the server (single binary, single port 8080)
 go run cmd/agentmemory/main.go serve \
-  --db-url "postgres://postgres:agentmemory@localhost:5432/agentmemory?sslmode=disable"
+  --db-url "postgres://agentmemory:agentmemory@localhost:5432/agentmemory?sslmode=disable"
 
 # Or use docker compose for the full stack
 docker compose up -d

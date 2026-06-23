@@ -11,6 +11,17 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// contextQuerier is the subset of *store.Queries methods used by ContextService.
+// The concrete *store.Queries satisfies this interface, enabling mock-based unit testing.
+type contextQuerier interface {
+	ListSummariesByUserID(ctx context.Context, params store.ListSummariesByUserIDParams) ([]store.SessionSummary, error)
+	ListObservationsByUserID(ctx context.Context, params store.ListObservationsByUserIDParams) ([]store.Observation, error)
+	GetUserTeam(ctx context.Context, userID string) (store.Team, error)
+	ListLessonsByTeam(ctx context.Context, params store.ListLessonsByTeamParams) ([]store.Lesson, error)
+	GraphTraversal(ctx context.Context, params store.GraphTraversalParams) ([]store.GraphTraversalRow, error)
+	GetObservationsByIDs(ctx context.Context, ids []string) ([]store.Observation, error)
+}
+
 // AssembledContext holds the raw content from all 5 context source buckets
 // before budget application and formatting.
 type AssembledContext struct {
@@ -24,7 +35,7 @@ type AssembledContext struct {
 // ContextService assembles context from 5 source buckets for injection
 // into the agent's prompt at session start, pre-tool-use, and pre-compact hooks.
 type ContextService struct {
-	queries   *store.Queries
+	queries   contextQuerier
 	searchSvc *SearchService
 	slotSvc   *SlotService
 }
@@ -131,8 +142,12 @@ func (s *ContextService) gatherRecap(ctx context.Context, userID string) (string
 
 	var parts []string
 	for _, sum := range summaries {
+		prefix := sum.SessionID
+		if len(sum.SessionID) >= 8 {
+			prefix = sum.SessionID[:8]
+		}
 		parts = append(parts, fmt.Sprintf("[session %s] %s",
-			sum.SessionID[:8], truncate(sum.SummaryText, 200)))
+			prefix, truncate(sum.SummaryText, 200)))
 	}
 
 	return strings.Join(parts, "\n"), nil
@@ -229,7 +244,7 @@ func (s *ContextService) gatherWorkingMemory(ctx context.Context) (string, error
 	if s.slotSvc == nil {
 		return "", nil
 	}
-	content, err := s.slotSvc.GetSlot(ctx, "working_memory")
+	content, err := s.slotSvc.GetSlot(ctx, "working_memory", "global", "")
 	if err != nil {
 		return "", nil
 	}

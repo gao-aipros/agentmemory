@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -201,4 +203,191 @@ func TestRateLimitMiddlewareBlocksExcess(t *testing.T) {
 	}
 
 	t.Logf("rate limited: %d, ok: %d (total: %d)", rateLimitedCount, okCount, 10)
+}
+
+// =============================================================================
+// Issue #95: Case-insensitive XSS sanitization — <SCRIPT> / <ScRiPt> must be
+// stripped from query parameters alongside lowercase <script>.
+// =============================================================================
+
+func TestSanitizeInput_CaseInsensitiveScriptTagInQuery(t *testing.T) {
+	handler := SanitizeInputMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		name := r.URL.Query().Get("name")
+		if strings.Contains(name, "SCRIPT") || strings.Contains(name, "script") {
+			t.Errorf("HTML tag still present after sanitization: %q", name)
+		}
+		if name != "alert(1)" {
+			t.Errorf("expected sanitized value 'alert(1)', got %q", name)
+		}
+	}))
+
+	req := httptest.NewRequest("GET", "/?name=<SCRIPT>alert(1)</SCRIPT>", nil)
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+}
+
+func TestSanitizeInput_MixedCaseXSSPatternsInQuery(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"javascript URI", "javascript:alert(1)", "alert(1)"},
+		{"JavaScript URI", "JavaScript:alert(1)", "alert(1)"},
+		{"JAVASCRIPT URI", "JAVASCRIPT:alert(1)", "alert(1)"},
+		{"onerror attribute", `"onerror="`, `""`},
+		{"onError attribute", `"onError="`, `""`},
+		{"onload attribute", `"onload="`, `""`},
+		{"onLoad attribute", `"onLoad="`, `""`},
+		{"data URI", `"data:text/html"`, `""`},
+		{"Data URI", `"Data:text/html"`, `""`},
+		{"DATA URI", `"DATA:TEXT/HTML"`, `""`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := SanitizeInputMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				val := r.URL.Query().Get("q")
+				if val != tt.expected {
+					t.Errorf("expected %q, got %q", tt.expected, val)
+				}
+			}))
+			req := httptest.NewRequest("GET", "/?q="+tt.input, nil)
+			handler.ServeHTTP(httptest.NewRecorder(), req)
+		})
+	}
+}
+
+// =============================================================================
+// Issue #94: JSON body sanitization — XSS payloads in JSON request bodies
+// must be stripped.
+// =============================================================================
+
+func TestSanitizeJSONBody_SanitizesScriptTags(t *testing.T) {
+	handler := SanitizeJSONBodyMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("failed to read body: %v", err)
+		}
+		var data map[string]interface{}
+		if err := json.Unmarshal(body, &data); err != nil {
+			t.Fatalf("failed to unmarshal body: %v", err)
+		}
+		text, ok := data["text"].(string)
+		if !ok {
+			t.Fatalf("expected string field 'text', got %T", data["text"])
+		}
+		if strings.Contains(text, "script") || strings.Contains(text, "SCRIPT") {
+			t.Errorf("script tag still present after JSON body sanitization: %q", text)
+		}
+		if text != "alert(1)" {
+			t.Errorf("expected sanitized text 'alert(1)', got %q", text)
+		}
+	}))
+
+	body := `{"text": "<script>alert(1)</script>"}`
+	req := httptest.NewRequest("POST", "/", io.NopCloser(strings.NewReader(body)))
+	req.Header.Set("Content-Type", "application/json")
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+}
+
+func TestSanitizeJSONBody_SanitizesCaseInsensitiveScriptTag(t *testing.T) {
+	handler := SanitizeJSONBodyMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("failed to read body: %v", err)
+		}
+		var data map[string]interface{}
+		if err := json.Unmarshal(body, &data); err != nil {
+			t.Fatalf("failed to unmarshal body: %v, raw: %s", err, string(body))
+		}
+		text, ok := data["text"].(string)
+		if !ok {
+			t.Fatalf("expected string field 'text', got %T", data["text"])
+		}
+		if strings.Contains(text, "SCRIPT") {
+			t.Errorf("SCRIPT tag still present after JSON body sanitization: %q", text)
+		}
+		if text != "alert(1)" {
+			t.Errorf("expected sanitized text 'alert(1)', got %q", text)
+		}
+	}))
+
+	body := `{"text": "<SCRIPT>alert(1)</SCRIPT>"}`
+	req := httptest.NewRequest("POST", "/", io.NopCloser(strings.NewReader(body)))
+	req.Header.Set("Content-Type", "application/json")
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+}
+
+func TestSanitizeJSONBody_SanitizesXSSPatterns(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		check    string // substring that should NOT be present after sanitization
+	}{
+		{"javascript URI", `{"url":"javascript:alert(1)"}`, "javascript:"},
+		{"JavaScript URI", `{"url":"JavaScript:alert(1)"}`, "JavaScript:"},
+		{"JAVASCRIPT URI", `{"url":"JAVASCRIPT:alert(1)"}`, "JAVASCRIPT:"},
+		{"onerror", `{"html":"<img src=x onerror=alert(1)>"}`, "onerror="},
+		{"onError", `{"html":"<img src=x onError=alert(1)>"}`, "onError="},
+		{"data URI", `{"html":"<a href=data:text/html>"}`, "data:text/html"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := SanitizeJSONBodyMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					t.Fatalf("failed to read body: %v", err)
+				}
+				if strings.Contains(string(body), tt.check) {
+					t.Errorf("XSS pattern %q still present after sanitization: %s", tt.check, string(body))
+				}
+			}))
+			req := httptest.NewRequest("POST", "/", io.NopCloser(strings.NewReader(tt.input)))
+			req.Header.Set("Content-Type", "application/json")
+			handler.ServeHTTP(httptest.NewRecorder(), req)
+		})
+	}
+}
+
+func TestSanitizeJSONBody_SkipsNonJSONBodies(t *testing.T) {
+	originalBody := "this is not json"
+	var captured io.ReadCloser
+
+	handler := SanitizeJSONBodyMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured = r.Body
+	}))
+
+	req := httptest.NewRequest("POST", "/", io.NopCloser(strings.NewReader(originalBody)))
+	req.Header.Set("Content-Type", "text/plain")
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	body, err := io.ReadAll(captured)
+	if err != nil {
+		t.Fatalf("failed to read captured body: %v", err)
+	}
+	if string(body) != originalBody {
+		t.Errorf("expected non-JSON body to pass through unchanged, got %q", string(body))
+	}
+}
+
+func TestSanitizeJSONBody_SkipsGETRequests(t *testing.T) {
+	originalBody := `{"text": "<script>alert(1)</script>"}`
+	var captured io.ReadCloser
+
+	handler := SanitizeJSONBodyMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured = r.Body
+	}))
+
+	req := httptest.NewRequest("GET", "/", io.NopCloser(strings.NewReader(originalBody)))
+	req.Header.Set("Content-Type", "application/json")
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	body, err := io.ReadAll(captured)
+	if err != nil {
+		t.Fatalf("failed to read captured body: %v", err)
+	}
+	if string(body) != originalBody {
+		t.Errorf("expected GET body to pass through unchanged, got %q", string(body))
+	}
 }

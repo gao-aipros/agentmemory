@@ -56,6 +56,7 @@ func NewRouter(bundle *mcp.ServiceBundle, cfg *config.Config) chi.Router {
 	// Global middleware — applied to ALL routes
 	r.Use(SecurityHeadersMiddleware) // Security headers first (set on every response)
 	r.Use(SanitizeInputMiddleware)   // Strip HTML tags from query parameters (XSS prevention)
+	r.Use(SanitizeJSONBodyMiddleware) // Strip HTML tags from JSON body fields (XSS prevention)
 	r.Use(RateLimitMiddleware)       // Rate limiting placeholder (no-op until implemented)
 	r.Use(middleware.RequestID)
 	r.Use(slogLoggerMiddleware)
