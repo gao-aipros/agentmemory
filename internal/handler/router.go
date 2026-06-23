@@ -41,7 +41,11 @@ func NewRouter(bundle *mcp.ServiceBundle, cfg *config.Config) chi.Router {
 		healthHandler = NewHealthHandler(&dbHealthChecker{pool: pool, queries: store.New(pool)})
 
 		// WebSocket handler
-		wsHandler = NewWSHandler(wsHub)
+		var wsValidator TokenValidator
+		if cfg != nil && cfg.JWTSecret != "" {
+			wsValidator = NewSessionTokenValidator(cfg.JWTSecret)
+		}
+		wsHandler = NewWSHandler(wsHub, wsValidator)
 	}
 
 	// Viewer handler (always available, even without DB)

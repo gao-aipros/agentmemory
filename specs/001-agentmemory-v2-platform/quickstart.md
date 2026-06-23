@@ -30,6 +30,7 @@ go run cmd/agentmemory/main.go setup \
 go run cmd/agentmemory/main.go user create \
   --email "admin@example.com" \
   --password "secure-password" \
+  --name "Admin User" \
   --db-url "postgres://postgres:agentmemory@localhost:5432/agentmemory?sslmode=disable"
 ```
 

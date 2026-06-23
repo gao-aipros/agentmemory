@@ -103,15 +103,45 @@ func (h *WSHub) Broadcast(message interface{}) error {
 	return nil
 }
 
+// TokenValidator re-validates a session token and returns an error if invalid.
+type TokenValidator interface {
+	ValidateToken(token string) error
+}
+
+// SessionTokenValidator implements TokenValidator for JWT session tokens.
+type SessionTokenValidator struct {
+	secret  string
+	queries interface {
+		GetUserByID(ctx interface{}, id string) (interface{}, error)
+	}
+}
+
+// NewSessionTokenValidator creates a new SessionTokenValidator.
+func NewSessionTokenValidator(secret string) *SessionTokenValidator {
+	return &SessionTokenValidator{secret: secret}
+}
+
+// ValidateToken re-validates a JWT session token.
+func (v *SessionTokenValidator) ValidateToken(token string) error {
+	_, err := auth.ValidateToken(token, v.secret)
+	return err
+}
+
 // WSHandler handles WebSocket connections at /v1/socket.
 // It requires session token authentication (rejects API keys).
 type WSHandler struct {
-	hub *WSHub
+	hub             *WSHub
+	validator       TokenValidator
+	recheckInterval time.Duration
 }
 
 // NewWSHandler creates a new WebSocket handler.
-func NewWSHandler(hub *WSHub) *WSHandler {
-	return &WSHandler{hub: hub}
+func NewWSHandler(hub *WSHub, validator TokenValidator) *WSHandler {
+	return &WSHandler{
+		hub:             hub,
+		validator:       validator,
+		recheckInterval: 5 * time.Minute,
+	}
 }
 
 // ServeHTTP handles the WebSocket upgrade request.
@@ -143,6 +173,28 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Register the connection
 	h.hub.Register(userID, conn)
 	defer h.hub.Unregister(userID, conn)
+
+	// Start background token re-validation goroutine
+	// Periodically re-checks the session token to detect expiry or revocation.
+	if h.validator != nil && token != "" {
+		recheckInterval := h.recheckInterval
+		if recheckInterval <= 0 {
+			recheckInterval = 5 * time.Minute
+		}
+		go func() {
+			ticker := time.NewTicker(recheckInterval)
+			defer ticker.Stop()
+
+			for range ticker.C {
+				if err := h.validator.ValidateToken(token); err != nil {
+					slog.Warn("token validation failed, closing WebSocket",
+						"user_id", userID, "error", err)
+					conn.Close()
+					return
+				}
+			}
+		}()
+	}
 
 	// Send initial session summary
 	welcome := map[string]interface{}{

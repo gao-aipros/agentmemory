@@ -5,6 +5,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/agentmemory/agentmemory/internal/store"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // =============================================================================
@@ -121,5 +125,48 @@ func TestSecurityHeadersCSPExactMatch(t *testing.T) {
 
 	if csp != expected {
 		t.Errorf("CSP header mismatch\n  got:  %s\n  want: %s", csp, expected)
+	}
+}
+
+// =============================================================================
+// Issue #115: API key expiry mid-session — checkAPIKeyExpiry rejects expired keys
+// =============================================================================
+
+func TestCheckAPIKeyExpiry_Expired(t *testing.T) {
+	apiKey := &store.ApiKey{
+		ExpiresAt: pgtype.Timestamptz{
+			Time:  time.Now().Add(-1 * time.Hour),
+			Valid: true,
+		},
+	}
+
+	err := checkAPIKeyExpiry(apiKey)
+	if err == nil {
+		t.Error("Expected error for expired API key, got nil")
+	}
+}
+
+func TestCheckAPIKeyExpiry_NotExpired(t *testing.T) {
+	apiKey := &store.ApiKey{
+		ExpiresAt: pgtype.Timestamptz{
+			Time:  time.Now().Add(1 * time.Hour),
+			Valid: true,
+		},
+	}
+
+	err := checkAPIKeyExpiry(apiKey)
+	if err != nil {
+		t.Errorf("Expected no error for non-expired API key, got: %v", err)
+	}
+}
+
+func TestCheckAPIKeyExpiry_NoExpirySet(t *testing.T) {
+	apiKey := &store.ApiKey{
+		ExpiresAt: pgtype.Timestamptz{Valid: false},
+	}
+
+	err := checkAPIKeyExpiry(apiKey)
+	if err != nil {
+		t.Errorf("Expected no error for API key without expiry, got: %v", err)
 	}
 }
