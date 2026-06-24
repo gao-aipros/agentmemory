@@ -14,9 +14,10 @@ services:
   agentmemory:
     build: .
     ports: ["8080:8080"]
+    env_file: .env
     environment:
       DB_URL: postgres://agentmemory:agentmemory@db:5432/agentmemory?sslmode=disable
-      JWT_SECRET: change-me-in-production
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       MIGRATE_ON_STARTUP: "true"
     depends_on:
       db:
