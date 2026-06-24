@@ -4,17 +4,18 @@ import (
 	"context"
 	"testing"
 
+	"github.com/agentmemory/agentmemory/internal/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // mockPatternsQuerier implements patternsQuerier for testing.
 type mockPatternsQuerier struct {
-	concepts []ConceptFreq
+	concepts []store.GetConceptFrequenciesRow
 	err      error
 }
 
-func (m *mockPatternsQuerier) getConceptFrequencies(ctx context.Context) ([]ConceptFreq, error) {
+func (m *mockPatternsQuerier) GetConceptFrequencies(ctx context.Context) ([]store.GetConceptFrequenciesRow, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -23,10 +24,10 @@ func (m *mockPatternsQuerier) getConceptFrequencies(ctx context.Context) ([]Conc
 
 func TestPatterns_DetectPatterns_ReturnsConceptFrequencies(t *testing.T) {
 	mock := &mockPatternsQuerier{
-		concepts: []ConceptFreq{
-			{Concept: "authentication", Count: 10},
-			{Concept: "database", Count: 7},
-			{Concept: "logging", Count: 3},
+		concepts: []store.GetConceptFrequenciesRow{
+			{Concept: "authentication", Freq: 10},
+			{Concept: "database", Freq: 7},
+			{Concept: "logging", Freq: 3},
 		},
 	}
 	svc := newPatternsServiceWithQuerier(mock)
@@ -46,7 +47,7 @@ func TestPatterns_DetectPatterns_ReturnsConceptFrequencies(t *testing.T) {
 
 func TestPatterns_DetectPatterns_EmptyResult(t *testing.T) {
 	mock := &mockPatternsQuerier{
-		concepts: []ConceptFreq{},
+		concepts: []store.GetConceptFrequenciesRow{},
 	}
 	svc := newPatternsServiceWithQuerier(mock)
 
