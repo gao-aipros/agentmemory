@@ -3,31 +3,32 @@ package service
 import (
 	"context"
 	"testing"
-	"time"
 
+	"github.com/agentmemory/agentmemory/internal/store"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // mockFileHistoryQuerier implements fileHistoryQuerier for testing.
 type mockFileHistoryQuerier struct {
-	entries []FileHistoryEntry
-	err     error
+	rows []store.GetFileHistoryRow
+	err  error
 }
 
-func (m *mockFileHistoryQuerier) getFileHistory(ctx context.Context, files []string, excludeSessionID string) ([]FileHistoryEntry, error) {
+func (m *mockFileHistoryQuerier) GetFileHistory(ctx context.Context, arg store.GetFileHistoryParams) ([]store.GetFileHistoryRow, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
-	return m.entries, nil
+	return m.rows, nil
 }
 
 func TestFileHistory_GetFileHistory_ReturnsEntries(t *testing.T) {
-	now := time.Now().UTC()
+	now := pgtype.Timestamptz{Valid: true}
 	mock := &mockFileHistoryQuerier{
-		entries: []FileHistoryEntry{
-			{File: "file1.go", ObservationID: "obs-1", Title: "added feature", Narrative: "added login handler", Timestamp: now, SessionID: "sess-1"},
-			{File: "file2.go", ObservationID: "obs-2", Title: "fixed bug", Narrative: "fixed nil pointer", Timestamp: now, SessionID: "sess-2"},
+		rows: []store.GetFileHistoryRow{
+			{ID: "obs-1", SessionID: "sess-1", Title: "added feature", Narrative: "added login handler", Files: []string{"file1.go"}, Timestamp: now},
+			{ID: "obs-2", SessionID: "sess-2", Title: "fixed bug", Narrative: "fixed nil pointer", Files: []string{"file2.go"}, Timestamp: now},
 		},
 	}
 	svc := newFileHistoryServiceWithQuerier(mock)
@@ -42,7 +43,7 @@ func TestFileHistory_GetFileHistory_ReturnsEntries(t *testing.T) {
 
 func TestFileHistory_GetFileHistory_EmptyResult(t *testing.T) {
 	mock := &mockFileHistoryQuerier{
-		entries: []FileHistoryEntry{},
+		rows: []store.GetFileHistoryRow{},
 	}
 	svc := newFileHistoryServiceWithQuerier(mock)
 
