@@ -2,9 +2,9 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"time"
 
+	"github.com/agentmemory/agentmemory/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -40,41 +40,7 @@ type FilePattern struct {
 
 // patternsQuerier handles pattern-related database queries.
 type patternsQuerier interface {
-	getConceptFrequencies(ctx context.Context) ([]ConceptFreq, error)
-}
-
-// patternsQuerierImpl is the production implementation using raw SQL.
-type patternsQuerierImpl struct {
-	pool *pgxpool.Pool
-}
-
-func (q *patternsQuerierImpl) getConceptFrequencies(ctx context.Context) ([]ConceptFreq, error) {
-	rows, err := q.pool.Query(ctx, `
-		SELECT unnest(concepts) AS concept, count(*) AS freq
-		FROM observations
-		WHERE concepts IS NOT NULL AND cardinality(concepts) > 0
-		GROUP BY concept
-		ORDER BY freq DESC
-		LIMIT 50
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query concept frequencies: %w", err)
-	}
-	defer rows.Close()
-
-	var concepts []ConceptFreq
-	for rows.Next() {
-		var cf ConceptFreq
-		if err := rows.Scan(&cf.Concept, &cf.Count); err != nil {
-			return nil, fmt.Errorf("failed to scan concept frequency: %w", err)
-		}
-		concepts = append(concepts, cf)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating concept frequencies: %w", err)
-	}
-
-	return concepts, nil
+	GetConceptFrequencies(ctx context.Context) ([]store.GetConceptFrequenciesRow, error)
 }
 
 // PatternsService detects recurring patterns across sessions for a project.
@@ -85,7 +51,7 @@ type PatternsService struct {
 // NewPatternsService creates a new PatternsService backed by the given connection pool.
 func NewPatternsService(pool *pgxpool.Pool) *PatternsService {
 	return &PatternsService{
-		queries: &patternsQuerierImpl{pool: pool},
+		queries: store.New(pool),
 	}
 }
 
@@ -99,12 +65,16 @@ func newPatternsServiceWithQuerier(q patternsQuerier) *PatternsService {
 // DetectPatterns analyzes past session data for a project and returns a
 // PatternSummary with detected concept frequencies.
 func (s *PatternsService) DetectPatterns(ctx context.Context, project string) (*PatternSummary, error) {
-	concepts, err := s.queries.getConceptFrequencies(ctx)
+	storeRows, err := s.queries.GetConceptFrequencies(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if concepts == nil {
-		concepts = make([]ConceptFreq, 0)
+	concepts := make([]ConceptFreq, len(storeRows))
+	for i, row := range storeRows {
+		concepts[i] = ConceptFreq{
+			Concept: row.Concept.(string),
+			Count:   int(row.Freq),
+		}
 	}
 	return &PatternSummary{
 		Project:      project,
