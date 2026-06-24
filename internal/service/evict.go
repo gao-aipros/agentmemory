@@ -6,10 +6,11 @@ import (
 	"log/slog"
 
 	"github.com/agentmemory/agentmemory/internal/store"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// evictionQuerier handles eviction-related database queries.
-// The concrete *store.Queries satisfies this, enabling mock-based testing.
+// evictionQuerier is the subset of *store.Queries methods used by EvictionService.
+// The concrete *store.Queries satisfies this interface, enabling mock-based unit testing.
 type evictionQuerier interface {
 	ListEvictionCandidates(ctx context.Context, params store.ListEvictionCandidatesParams) ([]store.ListEvictionCandidatesRow, error)
 	DeleteObservation(ctx context.Context, id string) error
@@ -23,9 +24,16 @@ type EvictionService struct {
 }
 
 // NewEvictionService creates a new EvictionService.
-func NewEvictionService(queries *store.Queries) *EvictionService {
+func NewEvictionService(pool *pgxpool.Pool) *EvictionService {
 	return &EvictionService{
-		queries: queries,
+		queries: store.New(pool),
+	}
+}
+
+// newEvictionServiceWithQuerier creates an EvictionService with a custom querier (for testing).
+func newEvictionServiceWithQuerier(q evictionQuerier) *EvictionService {
+	return &EvictionService{
+		queries: q,
 	}
 }
 
@@ -44,15 +52,13 @@ func (s *EvictionService) FindCandidates(ctx context.Context, limit int) ([]Evic
 		limit = 50
 	}
 	slog.Debug("searching for eviction candidates", "limit", limit)
-
 	rows, err := s.queries.ListEvictionCandidates(ctx, store.ListEvictionCandidatesParams{
 		Importance: 0.2,
 		Limit:      int32(limit),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to query eviction candidates: %w", err)
+		return nil, fmt.Errorf("failed to list eviction candidates: %w", err)
 	}
-
 	candidates := make([]EvictionCandidate, len(rows))
 	for i, row := range rows {
 		candidates[i] = EvictionCandidate{
