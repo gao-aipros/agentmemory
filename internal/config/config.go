@@ -42,6 +42,12 @@ type Config struct {
 	LLMBaseURL        string
 	EmbeddingAPIKey   string
 	EmbeddingBaseURL  string
+
+	// Scheduler intervals
+	CompressionInterval    time.Duration
+	SummarizationInterval  time.Duration
+	ConsolidationInterval  time.Duration
+	ReflectionInterval     time.Duration
 }
 
 // Load reads configuration from environment variables with sensible defaults.
@@ -66,6 +72,12 @@ func Load() *Config {
 		LLMBaseURL:        getEnv("LLM_BASE_URL", ""),
 		EmbeddingAPIKey:   getEnv("EMBEDDING_API_KEY", ""),
 		EmbeddingBaseURL:  getEnv("EMBEDDING_BASE_URL", ""),
+
+		// Scheduler intervals (minutes-based env vars)
+		CompressionInterval:   getEnvDuration("COMPRESSION_INTERVAL_MINUTES", 60*time.Minute),
+		SummarizationInterval: getEnvDuration("SUMMARIZATION_INTERVAL_MINUTES", 120*time.Minute),
+		ConsolidationInterval: getEnvDuration("CONSOLIDATION_INTERVAL_MINUTES", 360*time.Minute),
+		ReflectionInterval:    getEnvDuration("REFLECTION_INTERVAL_MINUTES", 1440*time.Minute),
 	}
 }
 

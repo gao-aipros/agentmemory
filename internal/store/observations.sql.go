@@ -21,7 +21,7 @@ func (q *Queries) DeleteObservation(ctx context.Context, id string) error {
 }
 
 const getObservation = `-- name: GetObservation :one
-SELECT id, session_id, owner_type, owner_user_id, owner_team_id, visibility, type, title, narrative, facts, concepts, files, importance, timestamp, created_at FROM observations WHERE id = $1
+SELECT id, session_id, owner_type, owner_user_id, owner_team_id, visibility, type, title, narrative, facts, concepts, files, importance, timestamp, created_at, compressed_at FROM observations WHERE id = $1
 `
 
 func (q *Queries) GetObservation(ctx context.Context, id string) (Observation, error) {
@@ -43,12 +43,13 @@ func (q *Queries) GetObservation(ctx context.Context, id string) (Observation, e
 		&i.Importance,
 		&i.Timestamp,
 		&i.CreatedAt,
+		&i.CompressedAt,
 	)
 	return i, err
 }
 
 const getObservationsByIDs = `-- name: GetObservationsByIDs :many
-SELECT id, session_id, owner_type, owner_user_id, owner_team_id, visibility, type, title, narrative, facts, concepts, files, importance, timestamp, created_at FROM observations WHERE id = ANY($1::text[])
+SELECT id, session_id, owner_type, owner_user_id, owner_team_id, visibility, type, title, narrative, facts, concepts, files, importance, timestamp, created_at, compressed_at FROM observations WHERE id = ANY($1::text[])
 `
 
 func (q *Queries) GetObservationsByIDs(ctx context.Context, dollar_1 []string) ([]Observation, error) {
@@ -76,6 +77,7 @@ func (q *Queries) GetObservationsByIDs(ctx context.Context, dollar_1 []string) (
 			&i.Importance,
 			&i.Timestamp,
 			&i.CreatedAt,
+			&i.CompressedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -90,7 +92,7 @@ func (q *Queries) GetObservationsByIDs(ctx context.Context, dollar_1 []string) (
 const insertObservation = `-- name: InsertObservation :one
 INSERT INTO observations (id, session_id, owner_type, owner_user_id, owner_team_id, visibility, type, title, narrative, facts, concepts, files, importance, timestamp)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-RETURNING id, session_id, owner_type, owner_user_id, owner_team_id, visibility, type, title, narrative, facts, concepts, files, importance, timestamp, created_at
+RETURNING id, session_id, owner_type, owner_user_id, owner_team_id, visibility, type, title, narrative, facts, concepts, files, importance, timestamp, created_at, compressed_at
 `
 
 type InsertObservationParams struct {
@@ -144,12 +146,13 @@ func (q *Queries) InsertObservation(ctx context.Context, arg InsertObservationPa
 		&i.Importance,
 		&i.Timestamp,
 		&i.CreatedAt,
+		&i.CompressedAt,
 	)
 	return i, err
 }
 
 const listObservationsBySession = `-- name: ListObservationsBySession :many
-SELECT id, session_id, owner_type, owner_user_id, owner_team_id, visibility, type, title, narrative, facts, concepts, files, importance, timestamp, created_at FROM observations WHERE session_id = $1 ORDER BY timestamp LIMIT $2
+SELECT id, session_id, owner_type, owner_user_id, owner_team_id, visibility, type, title, narrative, facts, concepts, files, importance, timestamp, created_at, compressed_at FROM observations WHERE session_id = $1 ORDER BY timestamp LIMIT $2
 `
 
 type ListObservationsBySessionParams struct {
@@ -182,6 +185,7 @@ func (q *Queries) ListObservationsBySession(ctx context.Context, arg ListObserva
 			&i.Importance,
 			&i.Timestamp,
 			&i.CreatedAt,
+			&i.CompressedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -194,7 +198,7 @@ func (q *Queries) ListObservationsBySession(ctx context.Context, arg ListObserva
 }
 
 const listObservationsByUserID = `-- name: ListObservationsByUserID :many
-SELECT o.id, o.session_id, o.owner_type, o.owner_user_id, o.owner_team_id, o.visibility, o.type, o.title, o.narrative, o.facts, o.concepts, o.files, o.importance, o.timestamp, o.created_at FROM observations o
+SELECT o.id, o.session_id, o.owner_type, o.owner_user_id, o.owner_team_id, o.visibility, o.type, o.title, o.narrative, o.facts, o.concepts, o.files, o.importance, o.timestamp, o.created_at, o.compressed_at FROM observations o
 JOIN sessions s ON o.session_id = s.id
 WHERE s.user_id = $1
 ORDER BY o.created_at DESC
@@ -231,6 +235,7 @@ func (q *Queries) ListObservationsByUserID(ctx context.Context, arg ListObservat
 			&i.Importance,
 			&i.Timestamp,
 			&i.CreatedAt,
+			&i.CompressedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -243,7 +248,7 @@ func (q *Queries) ListObservationsByUserID(ctx context.Context, arg ListObservat
 }
 
 const listRecentObservations = `-- name: ListRecentObservations :many
-SELECT id, session_id, owner_type, owner_user_id, owner_team_id, visibility, type, title, narrative, facts, concepts, files, importance, timestamp, created_at FROM observations ORDER BY created_at DESC LIMIT $1
+SELECT id, session_id, owner_type, owner_user_id, owner_team_id, visibility, type, title, narrative, facts, concepts, files, importance, timestamp, created_at, compressed_at FROM observations ORDER BY created_at DESC LIMIT $1
 `
 
 func (q *Queries) ListRecentObservations(ctx context.Context, limit int32) ([]Observation, error) {
@@ -271,6 +276,7 @@ func (q *Queries) ListRecentObservations(ctx context.Context, limit int32) ([]Ob
 			&i.Importance,
 			&i.Timestamp,
 			&i.CreatedAt,
+			&i.CompressedAt,
 		); err != nil {
 			return nil, err
 		}

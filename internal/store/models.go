@@ -110,21 +110,22 @@ type Memory struct {
 }
 
 type Observation struct {
-	ID          string
-	SessionID   string
-	OwnerType   string
-	OwnerUserID *string
-	OwnerTeamID *string
-	Visibility  string
-	Type        string
-	Title       string
-	Narrative   string
-	Facts       *string
-	Concepts    []string
-	Files       []string
-	Importance  float64
-	Timestamp   pgtype.Timestamptz
-	CreatedAt   pgtype.Timestamptz
+	ID           string
+	SessionID    string
+	OwnerType    string
+	OwnerUserID  *string
+	OwnerTeamID  *string
+	Visibility   string
+	Type         string
+	Title        string
+	Narrative    string
+	Facts        *string
+	Concepts     []string
+	Files        []string
+	Importance   float64
+	Timestamp    pgtype.Timestamptz
+	CreatedAt    pgtype.Timestamptz
+	CompressedAt pgtype.Timestamptz
 }
 
 type ObservationEmbedding struct {
@@ -165,6 +166,7 @@ type SessionSummary struct {
 	SummaryText string
 	Concepts    []string
 	CreatedAt   pgtype.Timestamptz
+	IsFull      bool
 }
 
 type Team struct {
