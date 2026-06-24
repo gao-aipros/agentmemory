@@ -30,13 +30,23 @@ type CompressedObservation struct {
 	ID             string
 	ObservationIds []string
 	SessionID      string
+	OwnerType      string
+	OwnerUserID    *string
+	OwnerTeamID    *string
 	Visibility     string
 	CompressedText string
 	Concepts       []string
 	CreatedAt      pgtype.Timestamptz
-	OwnerType      string
-	OwnerUserID    *string
-	OwnerTeamID    *string
+}
+
+type Crystal struct {
+	ID         string
+	ActionIds  []string
+	Visibility string
+	Narrative  string
+	Files      []string
+	Outcome    *string
+	CreatedAt  pgtype.Timestamptz
 }
 
 type GraphEdge struct {
@@ -57,9 +67,18 @@ type GraphNode struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type Insight struct {
+	ID         string
+	Content    string
+	Confidence float64
+	Source     string
+	CreatedAt  pgtype.Timestamptz
+}
+
 type Lesson struct {
 	ID               string
 	TeamID           *string
+	OwnerUserID      *string
 	Visibility       string
 	Content          string
 	Context          *string
@@ -67,7 +86,6 @@ type Lesson struct {
 	Source           string
 	CreatedAt        pgtype.Timestamptz
 	LastReinforcedAt pgtype.Timestamptz
-	OwnerUserID      *string
 }
 
 type LessonReinforcement struct {
@@ -116,6 +134,13 @@ type ObservationEmbedding struct {
 	CreatedAt     pgtype.Timestamptz
 }
 
+type ProceduralMemory struct {
+	ID        string
+	Content   string
+	Trigger   *string
+	CreatedAt pgtype.Timestamptz
+}
+
 type SchemaMigration struct {
 	Version int64
 	Dirty   bool
@@ -133,13 +158,13 @@ type Session struct {
 type SessionSummary struct {
 	ID          string
 	SessionID   string
+	OwnerType   string
+	OwnerUserID *string
+	OwnerTeamID *string
 	Visibility  string
 	SummaryText string
 	Concepts    []string
 	CreatedAt   pgtype.Timestamptz
-	OwnerType   string
-	OwnerUserID *string
-	OwnerTeamID *string
 }
 
 type Team struct {
