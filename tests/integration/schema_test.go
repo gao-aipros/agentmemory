@@ -24,7 +24,17 @@ func TestSchema_TablesExist(t *testing.T) {
 
 	runMigrations(t, db)
 
-	expectedTables := []string{"users", "api_keys", "teams", "team_members", "sessions"}
+	expectedTables := []string{
+		"users", "api_keys",
+		"teams", "team_members",
+		"sessions",
+		"observations", "observation_embeddings",
+		"compressed_observations", "compressed_embeddings",
+		"session_summaries",
+		"memories", "lessons", "lesson_reinforcements",
+		"graph_nodes", "graph_edges",
+		"crystals", "insights", "procedural_memories",
+	}
 
 	ctx := context.Background()
 	for _, table := range expectedTables {
