@@ -92,18 +92,16 @@ agentmemory/
 
 ## Configuration
 
-Key environment variables:
+All configuration is done via environment variables. The canonical reference is [`.env.example`](.env.example) — copy it to `.env` and edit.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DB_URL` | (required) | PostgreSQL connection string |
-| `DB_MAX_CONNS` | 25 | Max connection pool size |
-| `DB_MIN_CONNS` | 5 | Min connection pool size |
-| `JWT_SECRET` | `change-me-in-production` | JWT signing secret |
-| `PORT` | 8080 | HTTP server port |
-| `MIGRATE_ON_STARTUP` | `false` | Run migrations on server start |
-| `AGENTMEMORY_RATE_LIMIT` | 100 | Rate limit (req/s, future use) |
-| `AGENTMEMORY_SHARE_CONSOLIDATED` | `false` | Share consolidated memories with teams |
+**Bare minimum to start the server:**
+
+```bash
+export DB_URL="postgres://agentmemory:agentmemory@localhost:5432/agentmemory?sslmode=disable"
+export JWT_SECRET="$(openssl rand -hex 32)"
+```
+
+See [`.env.example`](.env.example) for the full list (24 variables) including LLM providers, embeddings, feature flags, and logging.
 
 ## Development
 
