@@ -41,7 +41,7 @@ func TestPipelineObserveToCompressed(t *testing.T) {
 	llmSvc := NewMockLLMService()
 	embedSvc := service.NewEmbeddingServiceWithEmbedder(nil) // No embed provider for test
 	compressor := service.NewCompressionService(db.Pool, llmSvc, embedSvc)
-	obsSvc := service.NewObservationService(db.Pool, compressor)
+	obsSvc := service.NewObservationService(db.Pool)
 
 	// Step 1: Observe — record an observation
 	input := service.RecordObservationInput{
@@ -110,7 +110,7 @@ func TestPipelineObserveTypeValidation(t *testing.T) {
 		sessionID, userID)
 	require.NoError(t, err)
 
-	obsSvc := service.NewObservationService(db.Pool, nil)
+	obsSvc := service.NewObservationService(db.Pool)
 
 	// Try invalid type
 	_, err = obsSvc.RecordObservation(ctx, service.RecordObservationInput{
@@ -145,7 +145,7 @@ func TestPipelineImportanceValidation(t *testing.T) {
 		sessionID, userID)
 	require.NoError(t, err)
 
-	obsSvc := service.NewObservationService(db.Pool, nil)
+	obsSvc := service.NewObservationService(db.Pool)
 
 	// Try invalid importance
 	_, err = obsSvc.RecordObservation(ctx, service.RecordObservationInput{

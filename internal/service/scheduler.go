@@ -2,11 +2,14 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/agentmemory/agentmemory/internal/store"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pgvector/pgvector-go"
 )
 
 // SchedulingFunc is a function that processes a batch for one scheduler tier.
@@ -93,8 +96,147 @@ func (s *Scheduler) runTier(ctx context.Context, interval time.Duration, fn Sche
 	}
 }
 
-// processCompression is a no-op stub for compression processing.
+// CompressSessionNow immediately compresses all uncompressed observations for a
+// session, bypassing the scheduler interval. Used by session-end handlers.
+// Uses FOR UPDATE SKIP LOCKED to avoid duplicating work if scheduler is also
+// processing the same session concurrently.
+func (s *Scheduler) CompressSessionNow(ctx context.Context, sessionID string) error {
+	return s.compressSession(ctx, sessionID)
+}
+
+// SummarizeSessionNow immediately summarizes a session, bypassing the scheduler
+// interval. isFull=true when triggered by session-end, false for mid-session.
+func (s *Scheduler) SummarizeSessionNow(ctx context.Context, sessionID string, isFull bool) error {
+	return s.summarizeSession(ctx, sessionID, isFull)
+}
+
+// processCompression is the Tier 0 scheduler function: scans for sessions with
+// uncompressed observations and batch-compresses them.
 func (s *Scheduler) processCompression(ctx context.Context) error {
+	sessions, err := s.queries.ListSessionsWithUncompressedObservations(ctx)
+	if err != nil {
+		return err
+	}
+	for _, sessionID := range sessions {
+		if err := s.compressSession(ctx, sessionID); err != nil {
+			slog.Warn("compression failed for session", "session_id", sessionID, "error", err)
+		}
+	}
+	return nil
+}
+
+// compressSession claims and compresses uncompressed observations for a session.
+func (s *Scheduler) compressSession(ctx context.Context, sessionID string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	// Claim uncompressed observations atomically
+	obs, err := s.queries.WithTx(tx).ClaimUncompressedObservations(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	if len(obs) == 0 {
+		return nil // already claimed by another caller
+	}
+
+	// TODO (US1): batch LLM call, batch embedding, insert compressed rows, UPDATE compressed_at
+	qtx := s.queries.WithTx(tx)
+
+	// Convert to ObservationForCompression for prompt building
+	compObs := make([]ObservationForCompression, len(obs))
+	for i, o := range obs {
+		facts := ""
+		if o.Facts != nil {
+			facts = *o.Facts
+		}
+		compObs[i] = ObservationForCompression{
+			Title:     o.Title,
+			Narrative: o.Narrative,
+			Facts:     facts,
+			Concepts:  o.Concepts,
+		}
+	}
+
+	// Build batch prompt and call LLM
+	prompt := BuildBatchCompressionPrompt(compObs)
+	response, err := s.llm.Call(ctx, prompt)
+	if err != nil {
+		return fmt.Errorf("batch LLM call failed: %w", err)
+	}
+
+	// Parse response
+	results, err := ParseBatchCompressionResponse(response, len(obs))
+	if err != nil {
+		return fmt.Errorf("failed to parse batch LLM response: %w", err)
+	}
+
+	// Build batch insert params
+	insertParams := make([]store.BatchInsertCompressedObservationsParams, len(results))
+	for i, r := range results {
+		insertParams[i] = store.BatchInsertCompressedObservationsParams{
+			ID:             uuid.New().String(),
+			ObservationIds: []string{obs[i].ID},
+			SessionID:      sessionID,
+			CompressedText: r.CompressedText,
+			Concepts:       r.Concepts,
+			OwnerType:      obs[i].OwnerType,
+			OwnerUserID:    obs[i].OwnerUserID,
+			Visibility:     obs[i].Visibility,
+		}
+	}
+
+	// Batch insert via copyfrom
+	if _, err := qtx.BatchInsertCompressedObservations(ctx, insertParams); err != nil {
+		return fmt.Errorf("failed to batch insert compressed observations: %w", err)
+	}
+
+	// Batch embed all compressed texts
+	texts := make([]string, len(results))
+	for i, r := range results {
+		texts[i] = r.CompressedText
+	}
+	embeddings, err := s.embed.BatchEmbedDocuments(ctx, texts)
+	if err != nil {
+		slog.Warn("batch embedding failed for compressed observations",
+			"session_id", sessionID,
+			"error", err,
+		)
+	} else {
+		for i, emb := range embeddings {
+			vec := pgvector.NewVector(emb)
+			if err := qtx.InsertCompressedEmbedding(ctx, store.InsertCompressedEmbeddingParams{
+				CompressedID: insertParams[i].ID,
+				Embedding:    &vec,
+				Model:        "default",
+			}); err != nil {
+				slog.Warn("failed to store compressed embedding",
+					"compressed_id", insertParams[i].ID,
+					"error", err,
+				)
+			}
+		}
+	}
+
+	// Mark observations as compressed
+	obsIDs := make([]string, len(obs))
+	for i, o := range obs {
+		obsIDs[i] = o.ID
+	}
+	if err := qtx.MarkObservationsCompressed(ctx, obsIDs); err != nil {
+		return fmt.Errorf("failed to mark observations compressed: %w", err)
+	}
+
+	return tx.Commit(ctx)
+}
+
+// summarizeSession updates a session summary incrementally.
+// isFull=true when triggered by session-end, false for mid-session scheduler runs.
+func (s *Scheduler) summarizeSession(ctx context.Context, sessionID string, isFull bool) error {
+	// TODO (US3): incremental summarization
+	_ = isFull
 	return nil
 }
 

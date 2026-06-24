@@ -68,7 +68,7 @@ func NewServiceBundle(pool *pgxpool.Pool) *ServiceBundle {
 		embedSvc = &service.EmbeddingService{}
 	}
 	compressor := service.NewCompressionService(pool, llmSvc, embedSvc)
-	obsSvc := service.NewObservationService(pool, compressor)
+	obsSvc := service.NewObservationService(pool)
 	sessionSvc := service.NewSessionService(pool)
 	recallSvc := service.NewRecallService(pool, embedSvc)
 	smartSearchSvc := service.NewSmartSearchService(pool, embedSvc)

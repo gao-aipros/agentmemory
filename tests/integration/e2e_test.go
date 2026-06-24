@@ -54,7 +54,7 @@ func TestE2E_FullAgentSession(t *testing.T) {
 	// =========================================================================
 	// Step 3: Fire all 13 hooks in order with realistic observation data
 	// =========================================================================
-	obsSvc := service.NewObservationService(db.Pool, nil)
+	obsSvc := service.NewObservationService(db.Pool)
 
 	allTypes := service.ValidHookTypes
 	assert.Len(t, allTypes, 13, "should be exactly 13 valid hook types")

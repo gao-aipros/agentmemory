@@ -10,7 +10,7 @@ import (
 )
 
 const claimUncompressedObservations = `-- name: ClaimUncompressedObservations :many
-SELECT id, title, narrative, facts, concepts, session_id
+SELECT id, title, narrative, facts, concepts, session_id, owner_type, owner_user_id, owner_team_id, visibility
 FROM observations
 WHERE session_id = $1 AND compressed_at IS NULL
 ORDER BY created_at
@@ -18,12 +18,16 @@ FOR UPDATE SKIP LOCKED
 `
 
 type ClaimUncompressedObservationsRow struct {
-	ID        string
-	Title     string
-	Narrative string
-	Facts     *string
-	Concepts  []string
-	SessionID string
+	ID          string
+	Title       string
+	Narrative   string
+	Facts       *string
+	Concepts    []string
+	SessionID   string
+	OwnerType   string
+	OwnerUserID *string
+	OwnerTeamID *string
+	Visibility  string
 }
 
 func (q *Queries) ClaimUncompressedObservations(ctx context.Context, sessionID string) ([]ClaimUncompressedObservationsRow, error) {
@@ -42,6 +46,10 @@ func (q *Queries) ClaimUncompressedObservations(ctx context.Context, sessionID s
 			&i.Facts,
 			&i.Concepts,
 			&i.SessionID,
+			&i.OwnerType,
+			&i.OwnerUserID,
+			&i.OwnerTeamID,
+			&i.Visibility,
 		); err != nil {
 			return nil, err
 		}

@@ -41,7 +41,7 @@ func TestSessionEndTriggersPipeline(t *testing.T) {
 	llmSvc := NewMockLLMService()
 	embedSvc := service.NewEmbeddingServiceWithEmbedder(nil)
 	compressor := service.NewCompressionService(db.Pool, llmSvc, embedSvc)
-	obsSvc := service.NewObservationService(db.Pool, compressor)
+	obsSvc := service.NewObservationService(db.Pool)
 
 	// Add a few observations
 	for i, obsType := range []string{
