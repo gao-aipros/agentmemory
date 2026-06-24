@@ -83,7 +83,10 @@ func NewServiceBundle(pool *pgxpool.Pool) *ServiceBundle {
 	slotSvc := service.NewSlotService(pool)
 	ctxSvc := service.NewContextService(pool, embedSvc, slotSvc)
 	evictSvc := service.NewEvictionService(pool)
-	sessionEndH := service.NewSessionEndHandler(sessionSvc, summarizer, consolidator, reflector, &sync.WaitGroup{}, semaphore.NewWeighted(20))
+	// Create Scheduler for session-end immediate operations (intervals are zero —
+	// periodic tiers are configured in serve.go where a separate Scheduler is created).
+	scheduler := service.NewScheduler(pool, llmSvc, embedSvc, service.SchedulerIntervals{})
+	sessionEndH := service.NewSessionEndHandler(sessionSvc, scheduler, summarizer, consolidator, reflector, &sync.WaitGroup{}, semaphore.NewWeighted(20))
 	signalSvc := service.NewSignalService(pool)
 	sentinelSvc := service.NewSentinelService(pool)
 	checkpointSvc := service.NewCheckpointService(pool)

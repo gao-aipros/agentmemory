@@ -111,12 +111,13 @@ func (q *Queries) ListSummariesByUserID(ctx context.Context, arg ListSummariesBy
 }
 
 const upsertSessionSummary = `-- name: UpsertSessionSummary :one
-INSERT INTO session_summaries (id, session_id, visibility, summary_text, concepts)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO session_summaries (id, session_id, visibility, summary_text, concepts, is_full)
+VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (session_id) DO UPDATE SET
     summary_text = EXCLUDED.summary_text,
     concepts = EXCLUDED.concepts,
-    visibility = EXCLUDED.visibility
+    visibility = EXCLUDED.visibility,
+    is_full = EXCLUDED.is_full
 RETURNING id, session_id, owner_type, owner_user_id, owner_team_id, visibility, summary_text, concepts, created_at, is_full
 `
 
@@ -126,6 +127,7 @@ type UpsertSessionSummaryParams struct {
 	Visibility  string
 	SummaryText string
 	Concepts    []string
+	IsFull      bool
 }
 
 func (q *Queries) UpsertSessionSummary(ctx context.Context, arg UpsertSessionSummaryParams) (SessionSummary, error) {
@@ -135,6 +137,7 @@ func (q *Queries) UpsertSessionSummary(ctx context.Context, arg UpsertSessionSum
 		arg.Visibility,
 		arg.SummaryText,
 		arg.Concepts,
+		arg.IsFull,
 	)
 	var i SessionSummary
 	err := row.Scan(

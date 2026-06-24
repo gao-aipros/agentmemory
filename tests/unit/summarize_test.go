@@ -91,3 +91,66 @@ func TestBuildSummarizePrompt_SingleObservation(t *testing.T) {
 	assert.NotEmpty(t, prompt)
 	assert.Contains(t, prompt, "Solo")
 }
+
+func TestBuildIncrementalSummarizePrompt_WithExistingSummary(t *testing.T) {
+	existingSummary := "Session summary: User logged in and queried the database."
+	newObservations := []service.SummarizeObservation{
+		{Title: "Schema migration", Narrative: "User ran a schema migration to add an index", Facts: "Added composite index on sessions(user_id, status)", Concepts: []string{"migration", "index"}},
+		{Title: "Query optimization", Narrative: "User optimized a slow query by adding a join hint"},
+	}
+
+	prompt := service.BuildIncrementalSummarizePrompt(existingSummary, newObservations)
+
+	// Should include the existing summary text
+	assert.Contains(t, prompt, existingSummary, "prompt should include existing summary text")
+
+	// Should include new observation content
+	assert.Contains(t, prompt, "Schema migration", "prompt should include new observation titles")
+	assert.Contains(t, prompt, "Query optimization", "prompt should include all new observation titles")
+	assert.Contains(t, prompt, "Added composite index", "prompt should include new observation facts")
+
+	// Should NOT ask for a completely new summary — should say "update" or "incorporate"
+	assert.NotContains(t, prompt, "Summarize the following agent session", "incremental prompt should differ from full-summarize prompt")
+}
+
+func TestBuildIncrementalSummarizePrompt_WithoutExistingSummary(t *testing.T) {
+	newObservations := []service.SummarizeObservation{
+		{Title: "User login", Narrative: "User logged into the system"},
+	}
+
+	prompt := service.BuildIncrementalSummarizePrompt("", newObservations)
+
+	// Should include the observation content
+	assert.Contains(t, prompt, "User login", "prompt should include observation title")
+	assert.Contains(t, prompt, "User logged into the system", "prompt should include observation narrative")
+
+	// When no existing summary, should behave like a regular summarize prompt
+	// but still use incremental wording
+	assert.NotEmpty(t, prompt, "prompt should not be empty even without existing summary")
+}
+
+func TestBuildIncrementalSummarizePrompt_EmptyNewObservations(t *testing.T) {
+	existingSummary := "Session summary: User explored the system."
+	prompt := service.BuildIncrementalSummarizePrompt(existingSummary, nil)
+
+	// Should include the existing summary even when no new observations
+	assert.Contains(t, prompt, existingSummary)
+}
+
+func TestBuildIncrementalSummarizePrompt_IncludesConcepts(t *testing.T) {
+	existingSummary := "Existing summary."
+	newObservations := []service.SummarizeObservation{
+		{
+			Title:     "Code review",
+			Narrative: "Reviewed pull request",
+			Concepts:  []string{"code-review", "go", "testing"},
+		},
+	}
+
+	prompt := service.BuildIncrementalSummarizePrompt(existingSummary, newObservations)
+
+	// Should include concepts from new observations
+	assert.Contains(t, prompt, "code-review", "prompt should include concepts from new observations")
+	assert.Contains(t, prompt, "go", "prompt should include multiple concepts")
+	assert.Contains(t, prompt, "testing", "prompt should include all concepts")
+}

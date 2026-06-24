@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/agentmemory/agentmemory/internal/store"
@@ -233,15 +234,145 @@ func (s *Scheduler) compressSession(ctx context.Context, sessionID string) error
 }
 
 // summarizeSession updates a session summary incrementally.
-// isFull=true when triggered by session-end, false for mid-session scheduler runs.
+// isFull=true when triggered by session-end (all observations), false for mid-session scheduler runs.
 func (s *Scheduler) summarizeSession(ctx context.Context, sessionID string, isFull bool) error {
-	// TODO (US3): incremental summarization
-	_ = isFull
+	// Fetch existing summary if any (for incremental support)
+	var existingSummaryText string
+	var lastSummaryTime time.Time
+	existingSummary, err := s.queries.GetSessionSummary(ctx, sessionID)
+	if err == nil {
+		existingSummaryText = existingSummary.SummaryText
+		lastSummaryTime = existingSummary.CreatedAt.Time
+	}
+
+	// Fetch all observations for the session
+	allObs, err := s.queries.ListObservationsBySession(ctx, store.ListObservationsBySessionParams{
+		SessionID: sessionID,
+		Limit:     10000,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list observations: %w", err)
+	}
+	if len(allObs) == 0 {
+		slog.Info("no observations to summarize", "session_id", sessionID)
+		return nil
+	}
+
+	// Determine which observations to include
+	var targetObs []store.Observation
+	if existingSummaryText != "" && !isFull {
+		// Incremental: only observations newer than the last summary
+		for _, obs := range allObs {
+			if obs.CreatedAt.Time.After(lastSummaryTime) {
+				targetObs = append(targetObs, obs)
+			}
+		}
+	} else {
+		// Full: all observations
+		targetObs = allObs
+	}
+	if len(targetObs) == 0 {
+		slog.Debug("no new observations since last summary", "session_id", sessionID)
+		return nil
+	}
+
+	// Convert to SummarizeObservation views
+	views := make([]SummarizeObservation, len(targetObs))
+	for i, obs := range targetObs {
+		facts := ""
+		if obs.Facts != nil {
+			facts = *obs.Facts
+		}
+		views[i] = SummarizeObservation{
+			Title:     obs.Title,
+			Narrative: obs.Narrative,
+			Facts:     facts,
+			Concepts:  obs.Concepts,
+		}
+	}
+
+	// Collect all concepts from all observations (not just new ones for full)
+	allConcepts := make(map[string]bool)
+	for _, obs := range allObs {
+		for _, c := range obs.Concepts {
+			allConcepts[c] = true
+		}
+	}
+	conceptsList := make([]string, 0, len(allConcepts))
+	for c := range allConcepts {
+		conceptsList = append(conceptsList, c)
+	}
+
+	// Build prompt and call LLM
+	var summaryText string
+	if existingSummaryText != "" && !isFull {
+		// Incremental summarization: use existing summary + new observations
+		prompt := BuildIncrementalSummarizePrompt(existingSummaryText, views)
+		response, err := s.llm.Call(ctx, prompt)
+		if err != nil {
+			return fmt.Errorf("LLM incremental summarization failed: %w", err)
+		}
+		summaryText = strings.TrimSpace(response)
+		if summaryText == "" {
+			slog.Warn("LLM returned empty incremental summary", "session_id", sessionID)
+			return nil
+		}
+	} else {
+		// Full summarization with chunking
+		chunks := ChunkObservations(views, 3000)
+		for i, chunk := range chunks {
+			prompt := BuildSummarizePrompt(chunk)
+			response, err := s.llm.Call(ctx, prompt)
+			if err != nil {
+				return fmt.Errorf("LLM summarization failed for chunk %d: %w", i, err)
+			}
+			if strings.TrimSpace(response) == "" {
+				slog.Warn("LLM returned empty response for chunk", "chunk", i)
+				continue
+			}
+			if summaryText != "" {
+				summaryText += "\n"
+			}
+			summaryText += response
+		}
+	}
+	if summaryText == "" {
+		slog.Warn("no summary text generated", "session_id", sessionID)
+		return nil
+	}
+
+	// Upsert with is_full flag
+	summaryID := uuid.New().String()
+	_, err = s.queries.UpsertSessionSummary(ctx, store.UpsertSessionSummaryParams{
+		ID:          summaryID,
+		SessionID:   sessionID,
+		Visibility:  "private",
+		SummaryText: summaryText,
+		Concepts:    conceptsList,
+		IsFull:      isFull,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to upsert session summary: %w", err)
+	}
+
+	slog.Info("session summarized",
+		"session_id", sessionID,
+		"is_full", isFull,
+	)
 	return nil
 }
 
-// processSummarization is a no-op stub for summarization processing.
+// processSummarization scans for sessions needing summarization and summarizes them.
 func (s *Scheduler) processSummarization(ctx context.Context) error {
+	sessions, err := s.queries.ListSessionsNeedingSummarization(ctx)
+	if err != nil {
+		return err
+	}
+	for _, sessionID := range sessions {
+		if err := s.summarizeSession(ctx, sessionID, false); err != nil {
+			slog.Warn("summarization failed for session", "session_id", sessionID, "error", err)
+		}
+	}
 	return nil
 }
 

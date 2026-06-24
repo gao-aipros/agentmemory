@@ -16,13 +16,15 @@ type MockLLMProvider struct{}
 
 // Call returns simulated LLM responses based on the prompt content.
 func (m *MockLLMProvider) Call(ctx context.Context, prompt string, options ...llms.CallOption) (string, error) {
-	// Compression prompt
-	if contains(prompt, "Compress the following observation") {
-		resp := service.CompressionResult{
-			CompressedText: "Compressed: user interaction with database schema discussion",
-			Concepts:       []string{"database", "schema", "postgresql"},
+	// Compression prompt (batch format: returns JSON array of CompressionResult)
+	if contains(prompt, "Compress the following") {
+		resps := []service.CompressionResult{
+			{
+				CompressedText: "Compressed: user interaction with database schema discussion",
+				Concepts:       []string{"database", "schema", "postgresql"},
+			},
 		}
-		b, _ := json.Marshal(resp)
+		b, _ := json.Marshal(resps)
 		return string(b), nil
 	}
 

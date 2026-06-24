@@ -37,10 +37,6 @@ func TestPipelineObserveToCompressed(t *testing.T) {
 		sessionID, userID)
 	require.NoError(t, err)
 
-	// Set up services with mock LLM
-	llmSvc := NewMockLLMService()
-	embedSvc := service.NewEmbeddingServiceWithEmbedder(nil) // No embed provider for test
-	compressor := service.NewCompressionService(db.Pool, llmSvc, embedSvc)
 	obsSvc := service.NewObservationService(db.Pool)
 
 	// Step 1: Observe — record an observation

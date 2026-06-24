@@ -1,10 +1,11 @@
 -- name: UpsertSessionSummary :one
-INSERT INTO session_summaries (id, session_id, visibility, summary_text, concepts)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO session_summaries (id, session_id, visibility, summary_text, concepts, is_full)
+VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (session_id) DO UPDATE SET
     summary_text = EXCLUDED.summary_text,
     concepts = EXCLUDED.concepts,
-    visibility = EXCLUDED.visibility
+    visibility = EXCLUDED.visibility,
+    is_full = EXCLUDED.is_full
 RETURNING *;
 
 -- name: GetSessionSummary :one
