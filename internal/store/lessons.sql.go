@@ -19,7 +19,7 @@ func (q *Queries) DeleteLesson(ctx context.Context, id string) error {
 }
 
 const getLesson = `-- name: GetLesson :one
-SELECT id, team_id, visibility, content, context, confidence, source, created_at, last_reinforced_at, owner_user_id FROM lessons WHERE id = $1
+SELECT id, team_id, owner_user_id, visibility, content, context, confidence, source, created_at, last_reinforced_at FROM lessons WHERE id = $1
 `
 
 func (q *Queries) GetLesson(ctx context.Context, id string) (Lesson, error) {
@@ -28,6 +28,7 @@ func (q *Queries) GetLesson(ctx context.Context, id string) (Lesson, error) {
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
+		&i.OwnerUserID,
 		&i.Visibility,
 		&i.Content,
 		&i.Context,
@@ -35,7 +36,6 @@ func (q *Queries) GetLesson(ctx context.Context, id string) (Lesson, error) {
 		&i.Source,
 		&i.CreatedAt,
 		&i.LastReinforcedAt,
-		&i.OwnerUserID,
 	)
 	return i, err
 }
@@ -43,7 +43,7 @@ func (q *Queries) GetLesson(ctx context.Context, id string) (Lesson, error) {
 const insertLesson = `-- name: InsertLesson :one
 INSERT INTO lessons (id, team_id, visibility, content, context, confidence, source)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, team_id, visibility, content, context, confidence, source, created_at, last_reinforced_at, owner_user_id
+RETURNING id, team_id, owner_user_id, visibility, content, context, confidence, source, created_at, last_reinforced_at
 `
 
 type InsertLessonParams struct {
@@ -70,6 +70,7 @@ func (q *Queries) InsertLesson(ctx context.Context, arg InsertLessonParams) (Les
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
+		&i.OwnerUserID,
 		&i.Visibility,
 		&i.Content,
 		&i.Context,
@@ -77,7 +78,6 @@ func (q *Queries) InsertLesson(ctx context.Context, arg InsertLessonParams) (Les
 		&i.Source,
 		&i.CreatedAt,
 		&i.LastReinforcedAt,
-		&i.OwnerUserID,
 	)
 	return i, err
 }
@@ -105,7 +105,7 @@ func (q *Queries) InsertLessonReinforcement(ctx context.Context, arg InsertLesso
 }
 
 const listAllLessons = `-- name: ListAllLessons :many
-SELECT id, team_id, visibility, content, context, confidence, source, created_at, last_reinforced_at, owner_user_id FROM lessons
+SELECT id, team_id, owner_user_id, visibility, content, context, confidence, source, created_at, last_reinforced_at FROM lessons
 WHERE ($2::text IS NULL OR team_id = $2)
 ORDER BY created_at DESC
 LIMIT $1
@@ -129,6 +129,7 @@ func (q *Queries) ListAllLessons(ctx context.Context, arg ListAllLessonsParams) 
 		if err := rows.Scan(
 			&i.ID,
 			&i.TeamID,
+			&i.OwnerUserID,
 			&i.Visibility,
 			&i.Content,
 			&i.Context,
@@ -136,7 +137,6 @@ func (q *Queries) ListAllLessons(ctx context.Context, arg ListAllLessonsParams) 
 			&i.Source,
 			&i.CreatedAt,
 			&i.LastReinforcedAt,
-			&i.OwnerUserID,
 		); err != nil {
 			return nil, err
 		}
@@ -149,7 +149,7 @@ func (q *Queries) ListAllLessons(ctx context.Context, arg ListAllLessonsParams) 
 }
 
 const listLessonsByTeam = `-- name: ListLessonsByTeam :many
-SELECT id, team_id, visibility, content, context, confidence, source, created_at, last_reinforced_at, owner_user_id FROM lessons WHERE team_id = $1 ORDER BY created_at DESC LIMIT $2
+SELECT id, team_id, owner_user_id, visibility, content, context, confidence, source, created_at, last_reinforced_at FROM lessons WHERE team_id = $1 ORDER BY created_at DESC LIMIT $2
 `
 
 type ListLessonsByTeamParams struct {
@@ -169,6 +169,7 @@ func (q *Queries) ListLessonsByTeam(ctx context.Context, arg ListLessonsByTeamPa
 		if err := rows.Scan(
 			&i.ID,
 			&i.TeamID,
+			&i.OwnerUserID,
 			&i.Visibility,
 			&i.Content,
 			&i.Context,
@@ -176,7 +177,6 @@ func (q *Queries) ListLessonsByTeam(ctx context.Context, arg ListLessonsByTeamPa
 			&i.Source,
 			&i.CreatedAt,
 			&i.LastReinforcedAt,
-			&i.OwnerUserID,
 		); err != nil {
 			return nil, err
 		}

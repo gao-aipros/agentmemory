@@ -41,15 +41,15 @@ func (m *mockModel) GenerateContent(ctx context.Context, messages []llms.Message
 // mockReflectionQuerier implements reflectionQuerier for testing.
 type mockReflectionQuerier struct {
 	listMemories  func(ctx context.Context, limit int32) ([]store.Memory, error)
-	insertInsight func(ctx context.Context, id string, content string, confidence float64) error
+	insertInsight func(ctx context.Context, params store.InsertInsightParams) error
 }
 
-func (m *mockReflectionQuerier) ListMemories(ctx context.Context, limit int32) ([]store.Memory, error) {
+func (m *mockReflectionQuerier) ListAllMemories(ctx context.Context, limit int32) ([]store.Memory, error) {
 	return m.listMemories(ctx, limit)
 }
 
-func (m *mockReflectionQuerier) InsertInsight(ctx context.Context, id string, content string, confidence float64) error {
-	return m.insertInsight(ctx, id, content, confidence)
+func (m *mockReflectionQuerier) InsertInsight(ctx context.Context, params store.InsertInsightParams) error {
+	return m.insertInsight(ctx, params)
 }
 
 // TestReflectionService_RunReflection_NoMemories verifies that RunReflection
@@ -61,7 +61,7 @@ func TestReflectionService_RunReflection_NoMemories(t *testing.T) {
 		listMemories: func(ctx context.Context, limit int32) ([]store.Memory, error) {
 			return nil, nil
 		},
-		insertInsight: func(ctx context.Context, id string, content string, confidence float64) error {
+		insertInsight: func(ctx context.Context, params store.InsertInsightParams) error {
 			t.Error("insertInsight should not be called when there are no memories")
 			return nil
 		},
@@ -92,11 +92,11 @@ func TestReflectionService_RunReflection_WithMemories(t *testing.T) {
 				{ID: "3", Content: "Third memory about auth", Concepts: []string{"auth", "security"}},
 			}, nil
 		},
-		insertInsight: func(ctx context.Context, id string, content string, confidence float64) error {
+		insertInsight: func(ctx context.Context, params store.InsertInsightParams) error {
 			capturedInsights = append(capturedInsights, struct {
 				content    string
 				confidence float64
-			}{content, confidence})
+			}{params.Content, params.Confidence})
 			return nil
 		},
 	}

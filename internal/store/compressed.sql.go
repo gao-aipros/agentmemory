@@ -37,7 +37,7 @@ func (q *Queries) GetCompressedEmbedding(ctx context.Context, compressedID strin
 }
 
 const getCompressedObservation = `-- name: GetCompressedObservation :one
-SELECT id, observation_ids, session_id, visibility, compressed_text, concepts, created_at, owner_type, owner_user_id, owner_team_id FROM compressed_observations WHERE id = $1
+SELECT id, observation_ids, session_id, owner_type, owner_user_id, owner_team_id, visibility, compressed_text, concepts, created_at FROM compressed_observations WHERE id = $1
 `
 
 func (q *Queries) GetCompressedObservation(ctx context.Context, id string) (CompressedObservation, error) {
@@ -47,13 +47,13 @@ func (q *Queries) GetCompressedObservation(ctx context.Context, id string) (Comp
 		&i.ID,
 		&i.ObservationIds,
 		&i.SessionID,
+		&i.OwnerType,
+		&i.OwnerUserID,
+		&i.OwnerTeamID,
 		&i.Visibility,
 		&i.CompressedText,
 		&i.Concepts,
 		&i.CreatedAt,
-		&i.OwnerType,
-		&i.OwnerUserID,
-		&i.OwnerTeamID,
 	)
 	return i, err
 }
@@ -77,7 +77,7 @@ func (q *Queries) InsertCompressedEmbedding(ctx context.Context, arg InsertCompr
 const insertCompressedObservation = `-- name: InsertCompressedObservation :one
 INSERT INTO compressed_observations (id, observation_ids, session_id, visibility, compressed_text, concepts)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, observation_ids, session_id, visibility, compressed_text, concepts, created_at, owner_type, owner_user_id, owner_team_id
+RETURNING id, observation_ids, session_id, owner_type, owner_user_id, owner_team_id, visibility, compressed_text, concepts, created_at
 `
 
 type InsertCompressedObservationParams struct {
@@ -103,19 +103,19 @@ func (q *Queries) InsertCompressedObservation(ctx context.Context, arg InsertCom
 		&i.ID,
 		&i.ObservationIds,
 		&i.SessionID,
+		&i.OwnerType,
+		&i.OwnerUserID,
+		&i.OwnerTeamID,
 		&i.Visibility,
 		&i.CompressedText,
 		&i.Concepts,
 		&i.CreatedAt,
-		&i.OwnerType,
-		&i.OwnerUserID,
-		&i.OwnerTeamID,
 	)
 	return i, err
 }
 
 const listCompressedBySession = `-- name: ListCompressedBySession :many
-SELECT id, observation_ids, session_id, visibility, compressed_text, concepts, created_at, owner_type, owner_user_id, owner_team_id FROM compressed_observations WHERE session_id = $1 ORDER BY created_at
+SELECT id, observation_ids, session_id, owner_type, owner_user_id, owner_team_id, visibility, compressed_text, concepts, created_at FROM compressed_observations WHERE session_id = $1 ORDER BY created_at
 `
 
 func (q *Queries) ListCompressedBySession(ctx context.Context, sessionID string) ([]CompressedObservation, error) {
@@ -131,13 +131,13 @@ func (q *Queries) ListCompressedBySession(ctx context.Context, sessionID string)
 			&i.ID,
 			&i.ObservationIds,
 			&i.SessionID,
+			&i.OwnerType,
+			&i.OwnerUserID,
+			&i.OwnerTeamID,
 			&i.Visibility,
 			&i.CompressedText,
 			&i.Concepts,
 			&i.CreatedAt,
-			&i.OwnerType,
-			&i.OwnerUserID,
-			&i.OwnerTeamID,
 		); err != nil {
 			return nil, err
 		}

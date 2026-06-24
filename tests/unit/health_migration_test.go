@@ -38,6 +38,10 @@ func (m *mockDBTX) QueryRow(_ context.Context, _ string, _ ...interface{}) pgx.R
 	return m.queryRowResult
 }
 
+func (m *mockDBTX) CopyFrom(_ context.Context, _ pgx.Identifier, _ []string, _ pgx.CopyFromSource) (int64, error) {
+	return 0, nil
+}
+
 // mockRow implements pgx.Row for testing.
 type mockRow struct {
 	values []interface{}

@@ -5,27 +5,28 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/agentmemory/agentmemory/internal/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // mockEvictionQuerier implements evictionQuerier for testing.
 type mockEvictionQuerier struct {
-	candidates []EvictionCandidate
+	candidates []store.ListEvictionCandidatesRow
 	err        error
 }
 
-func (m *mockEvictionQuerier) findEvictionCandidates(ctx context.Context, limit int) ([]EvictionCandidate, error) {
+func (m *mockEvictionQuerier) ListEvictionCandidates(ctx context.Context, params store.ListEvictionCandidatesParams) ([]store.ListEvictionCandidatesRow, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
-	if len(m.candidates) > limit {
-		return m.candidates[:limit], nil
+	if len(m.candidates) > int(params.Limit) {
+		return m.candidates[:params.Limit], nil
 	}
 	return m.candidates, nil
 }
 
-func (m *mockEvictionQuerier) deleteObservation(ctx context.Context, id string) error {
+func (m *mockEvictionQuerier) DeleteObservation(ctx context.Context, id string) error {
 	return nil
 }
 
@@ -37,9 +38,9 @@ func newEvictionServiceWithQuerier(q evictionQuerier) *EvictionService {
 
 func TestEviction_FindCandidates_ReturnsCandidates(t *testing.T) {
 	mock := &mockEvictionQuerier{
-		candidates: []EvictionCandidate{
-			{ObservationID: "obs-1", Importance: 0.1, Age: "30.5 days"},
-			{ObservationID: "obs-2", Importance: 0.15, Age: "25.0 days"},
+		candidates: []store.ListEvictionCandidatesRow{
+			{ID: "obs-1", Importance: 0.1, AgeDays: 30},
+			{ID: "obs-2", Importance: 0.15, AgeDays: 25},
 		},
 	}
 	svc := newEvictionServiceWithQuerier(mock)
@@ -49,12 +50,12 @@ func TestEviction_FindCandidates_ReturnsCandidates(t *testing.T) {
 	assert.Len(t, candidates, 2)
 	assert.Equal(t, "obs-1", candidates[0].ObservationID)
 	assert.Equal(t, 0.1, candidates[0].Importance)
-	assert.Equal(t, "30.5 days", candidates[0].Age)
+	assert.Equal(t, "30.0 days", candidates[0].Age)
 }
 
 func TestEviction_FindCandidates_EmptyResult(t *testing.T) {
 	mock := &mockEvictionQuerier{
-		candidates: []EvictionCandidate{},
+		candidates: []store.ListEvictionCandidatesRow{},
 	}
 	svc := newEvictionServiceWithQuerier(mock)
 
@@ -76,10 +77,10 @@ func TestEviction_FindCandidates_ErrorPropagation(t *testing.T) {
 
 func TestEviction_FindCandidates_RespectsLimit(t *testing.T) {
 	mock := &mockEvictionQuerier{
-		candidates: []EvictionCandidate{
-			{ObservationID: "obs-1", Importance: 0.1, Age: "1 day"},
-			{ObservationID: "obs-2", Importance: 0.2, Age: "2 days"},
-			{ObservationID: "obs-3", Importance: 0.3, Age: "3 days"},
+		candidates: []store.ListEvictionCandidatesRow{
+			{ID: "obs-1", Importance: 0.1, AgeDays: 1},
+			{ID: "obs-2", Importance: 0.2, AgeDays: 2},
+			{ID: "obs-3", Importance: 0.3, AgeDays: 3},
 		},
 	}
 	svc := newEvictionServiceWithQuerier(mock)
