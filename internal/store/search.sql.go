@@ -7,7 +7,6 @@ package store
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/pgvector/pgvector-go"
 )
@@ -202,9 +201,6 @@ type VectorSearchRow struct {
 // Returns observation IDs with similarity scores (1 - cosine_distance).
 // sqlc.arg(owner_user_id) enforces cross-tenant isolation.
 func (q *Queries) VectorSearch(ctx context.Context, arg VectorSearchParams) ([]VectorSearchRow, error) {
-	if arg.Embedding == nil {
-		return nil, fmt.Errorf("embedding must not be nil")
-	}
 	rows, err := q.db.Query(ctx, vectorSearch, arg.Embedding, arg.OwnerUserID, arg.Limit)
 	if err != nil {
 		return nil, err

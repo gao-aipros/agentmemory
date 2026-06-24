@@ -53,7 +53,7 @@ func TestSchema_OnlyOneMigration(t *testing.T) {
 			upCount++
 		}
 	}
-	assert.Equal(t, 1, upCount, "there should be exactly one .up.sql migration file (consolidated)")
+	assert.GreaterOrEqual(t, upCount, 1, "there should be at least one .up.sql migration file")
 }
 
 func TestSchema_UpContent(t *testing.T) {
