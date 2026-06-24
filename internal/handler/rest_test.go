@@ -153,6 +153,111 @@ func TestEndSessionResponse_HasQueueFields(t *testing.T) {
 //
 // This test does NOT reference the Go field name (SHA or CommitSHA) — it only
 // checks JSON output keys, so it compiles both before and after the struct change.
+// =============================================================================
+// #15: POST /v1/api/session/start — HandleStartSession
+// =============================================================================
+
+// TestHandleStartSession_NilService verifies that HandleStartSession returns
+// 503 Service Unavailable when the session service is nil.
+func TestHandleStartSession_NilService(t *testing.T) {
+	h := &RESTHandler{sessionSvc: nil}
+
+	body := `{"team_id":"team-123"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/api/session/start", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	h.HandleStartSession(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("HandleStartSession with nil sessionSvc returned status %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+
+	var decoded map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &decoded); err != nil {
+		t.Fatalf("response body is not valid JSON: %v", err)
+	}
+
+	if decoded["error"] != "session service not configured" {
+		t.Errorf("error message = %q, want %q", decoded["error"], "session service not configured")
+	}
+	if decoded["code"] != "SERVICE_UNAVAILABLE" {
+		t.Errorf("error code = %q, want %q", decoded["code"], "SERVICE_UNAVAILABLE")
+	}
+}
+
+// TestHandleStartSession_NoAuth verifies that HandleStartSession returns
+// 401 Unauthorized when no user_id is present in the request context.
+func TestHandleStartSession_NoAuth(t *testing.T) {
+	h := &RESTHandler{sessionSvc: &service.SessionService{}}
+
+	body := `{"team_id":"team-123"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/api/session/start", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	h.HandleStartSession(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("HandleStartSession with no auth returned status %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+
+	var decoded map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &decoded); err != nil {
+		t.Fatalf("response body is not valid JSON: %v", err)
+	}
+
+	if decoded["error"] != "authentication required" {
+		t.Errorf("error message = %q, want %q", decoded["error"], "authentication required")
+	}
+	if decoded["code"] != "UNAUTHORIZED" {
+		t.Errorf("error code = %q, want %q", decoded["code"], "UNAUTHORIZED")
+	}
+}
+
+// TestStartSessionResponse_HasFields verifies that startSessionResponse JSON
+// includes session_id, started_at, and status fields.
+func TestStartSessionResponse_HasFields(t *testing.T) {
+	resp := startSessionResponse{
+		SessionID: "sess-1",
+		StartedAt: "2026-06-24T12:00:00Z",
+		Status:    "active",
+	}
+
+	data, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("failed to marshal startSessionResponse: %v", err)
+	}
+
+	var decoded map[string]interface{}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal JSON: %v", err)
+	}
+
+	// Verify session_id field exists
+	if _, ok := decoded["session_id"]; !ok {
+		t.Fatal("startSessionResponse JSON missing required field: session_id")
+	}
+
+	// Verify started_at field exists and is a string
+	sa, ok := decoded["started_at"]
+	if !ok {
+		t.Fatal("startSessionResponse JSON missing required field: started_at")
+	}
+	if _, isStr := sa.(string); !isStr {
+		t.Fatalf("started_at should be a string, got %T", sa)
+	}
+
+	// Verify status field exists and is "active"
+	st, ok := decoded["status"]
+	if !ok {
+		t.Fatal("startSessionResponse JSON missing required field: status")
+	}
+	if st != "active" {
+		t.Errorf("status = %q, want %q", st, "active")
+	}
+}
+
 func TestCommitResponse_UsesCommitSHA(t *testing.T) {
 	resp := commitResponse{
 		SessionID: "sess-1",

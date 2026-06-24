@@ -155,6 +155,7 @@ func NewRouter(bundle *mcp.ServiceBundle, cfg *config.Config) chi.Router {
 		r.Route("/v1/api", func(r chi.Router) {
 			if restHandler != nil {
 				r.Post("/observe", restHandler.HandleObserve)
+				r.Post("/session/start", restHandler.HandleStartSession)
 				r.Post("/session/end", restHandler.HandleEndSession)
 				r.Post("/session/commit", restHandler.HandleCommitSession)
 			} else {
