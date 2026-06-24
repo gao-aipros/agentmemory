@@ -229,58 +229,11 @@ func (s *ConsolidationService) ConsolidateSession(ctx context.Context, sessionID
 	return nil
 }
 
-const (
-	// listAllMemories is a raw SQL query to fetch all memories ordered by recency.
-	listAllMemories = `SELECT id, owner_type, owner_user_id, owner_team_id, visibility, content, concepts, source, confidence, created_at FROM memories ORDER BY created_at DESC LIMIT $1`
-	// insertInsight is a raw SQL query to persist a synthesized insight.
-	insertInsight = `INSERT INTO insights (id, content, confidence, source, created_at) VALUES ($1, $2, $3, 'reflect', now())`
-)
-
 // reflectionQuerier is the subset of database operations needed by ReflectionService.
-// The concrete reflectionQuerierImpl satisfies this interface, enabling mock-based unit testing.
+// The concrete *store.Queries satisfies this interface, enabling mock-based unit testing.
 type reflectionQuerier interface {
-	ListMemories(ctx context.Context, limit int32) ([]store.Memory, error)
-	InsertInsight(ctx context.Context, id string, content string, confidence float64) error
-}
-
-// reflectionQuerierImpl is the production implementation using a pgxpool.Pool.
-type reflectionQuerierImpl struct {
-	pool *pgxpool.Pool
-}
-
-// ListMemories fetches all memories from the database, ordered by recency, up to limit.
-func (r *reflectionQuerierImpl) ListMemories(ctx context.Context, limit int32) ([]store.Memory, error) {
-	rows, err := r.pool.Query(ctx, listAllMemories, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []store.Memory
-	for rows.Next() {
-		var i store.Memory
-		if err := rows.Scan(
-			&i.ID,
-			&i.OwnerType,
-			&i.OwnerUserID,
-			&i.OwnerTeamID,
-			&i.Visibility,
-			&i.Content,
-			&i.Concepts,
-			&i.Source,
-			&i.Confidence,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	return items, rows.Err()
-}
-
-// InsertInsight persists a synthesized insight to the insights table.
-func (r *reflectionQuerierImpl) InsertInsight(ctx context.Context, id string, content string, confidence float64) error {
-	_, err := r.pool.Exec(ctx, insertInsight, id, content, confidence)
-	return err
+	ListAllMemories(ctx context.Context, limit int32) ([]store.Memory, error)
+	InsertInsight(ctx context.Context, params store.InsertInsightParams) error
 }
 
 // ReflectionService handles periodic reflection: clustering memories,
@@ -293,10 +246,10 @@ type ReflectionService struct {
 // NewReflectionService creates a new ReflectionService.
 func NewReflectionService(pool *pgxpool.Pool, timerIntervalSeconds int) *ReflectionService {
 	if timerIntervalSeconds <= 0 {
-		timerIntervalSeconds = 3600 // default 1 hour
+		timerIntervalSeconds = 3600
 	}
 	return &ReflectionService{
-		queries:       &reflectionQuerierImpl{pool: pool},
+		queries:       store.New(pool),
 		timerInterval: timerIntervalSeconds,
 	}
 }
@@ -313,7 +266,7 @@ func newReflectionServiceWithQuerier(q reflectionQuerier) *ReflectionService {
 // detects patterns, synthesizes insights, and persists them.
 func (s *ReflectionService) RunReflection(ctx context.Context, project string, maxClusters int) error {
 	// Fetch memories (up to 1000)
-	memories, err := s.queries.ListMemories(ctx, 1000)
+	memories, err := s.queries.ListAllMemories(ctx, 1000)
 	if err != nil {
 		return fmt.Errorf("failed to list memories: %w", err)
 	}
@@ -348,7 +301,11 @@ func (s *ReflectionService) RunReflection(ctx context.Context, project string, m
 
 	// Persist each insight
 	for _, insight := range allInsights {
-		if err := s.queries.InsertInsight(ctx, uuid.New().String(), insight.Content, insight.Confidence); err != nil {
+		if err := s.queries.InsertInsight(ctx, store.InsertInsightParams{
+				ID:         uuid.New().String(),
+				Content:    insight.Content,
+				Confidence: insight.Confidence,
+			}); err != nil {
 			slog.Warn("failed to persist insight", "error", err)
 		}
 	}

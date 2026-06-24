@@ -30,13 +30,6 @@ func NewEvictionService(pool *pgxpool.Pool) *EvictionService {
 	}
 }
 
-// newEvictionServiceWithQuerier creates an EvictionService with a custom querier (for testing).
-func newEvictionServiceWithQuerier(q evictionQuerier) *EvictionService {
-	return &EvictionService{
-		queries: q,
-	}
-}
-
 // EvictionCandidate identifies an observation that may be evicted.
 type EvictionCandidate struct {
 	ObservationID string
