@@ -296,6 +296,8 @@ func TestMCPCompat_ErrorHandling(t *testing.T) {
 	db := SetupTestDB(t)
 	defer TeardownTestDB(t, db)
 
+	runMigrations(t, db)
+
 	_, session, ctx, cancel := setupMCPServer(t, db.Pool)
 	defer cancel()
 	defer session.Close()

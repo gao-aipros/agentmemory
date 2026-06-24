@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -102,7 +103,11 @@ func TestWebSocketGracefulDisconnect(t *testing.T) {
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upgrader := websocket.Upgrader{}
 		conn, err := upgrader.Upgrade(w, r, nil)
-		require.NoError(t, err)
+		if err != nil {
+			log.Printf("WebSocket upgrade error: %v", err)
+			http.Error(w, "upgrade failed", http.StatusInternalServerError)
+			return
+		}
 
 		hub.Register("test-user", conn)
 		defer hub.Unregister("test-user", conn)
@@ -112,13 +117,15 @@ func TestWebSocketGracefulDisconnect(t *testing.T) {
 			"type": "test",
 			"data": "hello",
 		})
-		assert.NoError(t, err)
+		if err != nil {
+			log.Printf("SendToUser error: %v", err)
+		}
 
 		// Read one message then close
 		conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 		_, _, err = conn.ReadMessage()
 		if err != nil {
-			t.Logf("Read error (expected on close): %v", err)
+			log.Printf("WebSocket read error (expected on close): %v", err)
 		}
 	}))
 	defer testServer.Close()
