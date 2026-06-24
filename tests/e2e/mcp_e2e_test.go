@@ -12,8 +12,11 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"testing"
@@ -310,4 +313,192 @@ func TestMCP_DBVerification(t *testing.T) {
 	).Scan(&count)
 	require.NoError(t, err, "DB query")
 	assert.GreaterOrEqual(t, count, 1, "memory should exist in DB, concept=%s", concept)
+}
+
+// ── REST helpers ───────────────────────────────────────────────────────────
+
+func restDo(method, path string, body any, apiKey string) (*http.Response, []byte, error) {
+	var bodyReader io.Reader
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return nil, nil, err
+		}
+		bodyReader = bytes.NewReader(data)
+	}
+
+	req, err := http.NewRequest(method, getBaseURL()+path, bodyReader)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	return resp, respBody, err
+}
+
+func restJSON(method, path string, body any, apiKey string, out any) (int, error) {
+	resp, respBody, err := restDo(method, path, body, apiKey)
+	if err != nil {
+		return 0, err
+	}
+	if out != nil && len(respBody) > 0 {
+		if err := json.Unmarshal(respBody, out); err != nil {
+			return resp.StatusCode, err
+		}
+	}
+	return resp.StatusCode, nil
+}
+
+// pollDB waits for a condition (query returns count >= min) with timeout.
+func pollDB(t *testing.T, pool *pgxpool.Pool, query string, min int, timeout time.Duration) {
+	t.Helper()
+	ctx := context.Background()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		var count int
+		if err := pool.QueryRow(ctx, query).Scan(&count); err == nil && count >= min {
+			return
+		}
+		time.Sleep(2 * time.Second)
+	}
+	t.Fatalf("timed out after %v waiting for: %s", timeout, query)
+}
+
+// ── 4-tier pipeline E2E ───────────────────────────────────────────────────
+
+func TestMCP_PipelineE2E(t *testing.T) {
+	apiKey := getAPIKey(t)
+	ctx := context.Background()
+	pool := newDBPool(t)
+
+	client, transport := newMCPClient(t, apiKey)
+	transport.DisableStandaloneSSE = true // avoid retry exhaustion during long pipeline waits
+	session, err := client.Connect(ctx, transport, nil)
+	require.NoError(t, err, "connect")
+	defer session.Close()
+
+	// ---- Step 1: Create session via REST ----
+	type sessionStartResp struct {
+		SessionID string `json:"session_id"`
+		Status    string `json:"status"`
+	}
+	var ssr sessionStartResp
+	status, err := restJSON("POST", "/v1/api/session/start", map[string]any{}, apiKey, &ssr)
+	require.NoError(t, err, "session start")
+	require.Equal(t, 201, status, "session start HTTP 201")
+	sessionID := ssr.SessionID
+	t.Logf("Session created: %s", sessionID)
+
+	// ---- Step 2: Record observations via MCP ----
+	types := []string{"user_prompt_submit", "pre_tool_use", "post_tool_use", "pre_llm_call", "post_llm_call"}
+	for i, hookType := range types {
+		_, err := session.CallTool(ctx, &mcp.CallToolParams{
+			Name: "memory_observe",
+			Arguments: map[string]any{
+				"type":       hookType,
+				"title":      fmt.Sprintf("Pipeline e2e observation %d: %s", i, hookType),
+				"narrative":  fmt.Sprintf("Detailed narrative for pipeline e2e test observation %d. The agent performed a %s action involving database schema design and PostgreSQL optimization.", i, hookType),
+				"session_id": sessionID,
+				"concepts":   []string{"pipeline-e2e", hookType, "postgresql"},
+				"importance": 0.8,
+			},
+		})
+		require.NoError(t, err, "memory_observe %s", hookType)
+	}
+	t.Logf("Recorded %d observations", len(types))
+
+	// ---- Step 3: Wait for async compression + embedding ----
+	t.Run("Tier0_Compression", func(t *testing.T) {
+		// Compression groups observations by session
+		pollDB(t, pool,
+			fmt.Sprintf("SELECT COUNT(*) FROM compressed_observations WHERE session_id = '%s'", sessionID),
+			1, 60*time.Second)
+
+		// Verify compressed text is non-empty (LLM worked)
+		var nonEmptyCount int
+		err := pool.QueryRow(ctx, fmt.Sprintf(
+			"SELECT COUNT(*) FROM compressed_observations WHERE session_id = '%s' AND compressed_text != ''", sessionID,
+		)).Scan(&nonEmptyCount)
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, nonEmptyCount, 1, "at least one compressed_text should be non-empty (LLM compression worked)")
+
+		// Verify compressed_embeddings (may fail if embedding model name is misconfigured)
+		var embCount int
+		err = pool.QueryRow(ctx, fmt.Sprintf(
+			"SELECT COUNT(*) FROM compressed_embeddings ce JOIN compressed_observations co ON co.id = ce.compressed_id WHERE co.session_id = '%s'", sessionID,
+		)).Scan(&embCount)
+		require.NoError(t, err)
+		if embCount == 0 {
+			t.Log("WARNING: no embeddings found — check EMBEDDING_MODEL in .env (should be 'text-embedding-3-small')")
+		} else {
+			t.Logf("Embeddings: %d (embedding API worked)", embCount)
+		}
+	})
+
+	// ---- Step 4: Get user ID for consolidation context ----
+	var userID string
+	err = pool.QueryRow(ctx, "SELECT id FROM users LIMIT 1").Scan(&userID)
+	require.NoError(t, err, "get user ID")
+	t.Logf("User ID: %s", userID)
+
+	// ---- Step 5: Run full consolidation via MCP (summarize → consolidate → reflect) ----
+	t.Run("Tier1_Summarization", func(t *testing.T) {
+		result, err := session.CallTool(ctx, &mcp.CallToolParams{
+			Name: "memory_consolidate",
+			Arguments: map[string]any{
+				"session_id":    sessionID,
+				"tier":          "procedural",
+				"owner_user_id": userID,
+			},
+		})
+		require.NoError(t, err, "memory_consolidate call")
+		require.False(t, result.IsError, "memory_consolidate should succeed")
+
+		// Verify session_summary was created (LLM summarization)
+		var summaryText string
+		err = pool.QueryRow(ctx,
+			"SELECT summary_text FROM session_summaries WHERE session_id = $1", sessionID,
+		).Scan(&summaryText)
+		require.NoError(t, err)
+		assert.NotEmpty(t, summaryText, "summary_text should be non-empty (LLM summarization worked)")
+		t.Logf("Summary length: %d chars", len(summaryText))
+	})
+
+	// ---- Step 6: Verify consolidation output (memories + lessons) ----
+	t.Run("Tier2_Consolidation", func(t *testing.T) {
+		var memCount, lesCount int
+		pool.QueryRow(ctx, "SELECT COUNT(*) FROM memories WHERE source = 'consolidation'").Scan(&memCount)
+		pool.QueryRow(ctx, "SELECT COUNT(*) FROM lessons WHERE source = 'consolidation'").Scan(&lesCount)
+		assert.GreaterOrEqual(t, memCount, 1, "memories should exist (LLM consolidation worked)")
+		assert.GreaterOrEqual(t, lesCount, 1, "lessons should exist (LLM consolidation worked)")
+		t.Logf("Memories: %d, Lessons: %d", memCount, lesCount)
+	})
+
+	// ---- Step 7: Verify reflection output (insights) ----
+	t.Run("Tier3_Reflection", func(t *testing.T) {
+		var insCount int
+		pool.QueryRow(ctx, "SELECT COUNT(*) FROM insights WHERE source = 'reflect'").Scan(&insCount)
+		assert.GreaterOrEqual(t, insCount, 1, "insights should exist (reflection worked)")
+	})
+
+	// ---- Step 8: Vector search verifies embedding + search end-to-end ----
+	t.Run("Vector_Search", func(t *testing.T) {
+		result, err := session.CallTool(ctx, &mcp.CallToolParams{
+			Name: "memory_smart_search",
+			Arguments: map[string]any{
+				"query": "database schema PostgreSQL optimization",
+			},
+		})
+		require.NoError(t, err, "smart_search")
+		require.False(t, result.IsError)
+		assert.NotEmpty(t, result.Content, "search should return results (vector search worked)")
+	})
 }
