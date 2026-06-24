@@ -12,6 +12,7 @@ import (
 
 // sessionEndSessioner is the interface for ending sessions, extracted for testability.
 type sessionEndSessioner interface {
+	GetSession(ctx context.Context, sessionID string) (*store.Session, error)
 	EndSession(ctx context.Context, sessionID string) (*store.Session, error)
 }
 
@@ -52,17 +53,20 @@ func NewSessionEndHandler(
 // Steps 2-4 run asynchronously. The pipeline goroutine is tracked by the
 // WaitGroup and bounded by the semaphore.
 func (h *SessionEndHandler) HandleSessionEnd(ctx context.Context, sessionID string) error {
-	// Step 1: Close the session (synchronous)
-	session, err := h.sessionSvc.EndSession(ctx, sessionID)
+	// Step 0: Check if session already ended (idempotency guard).
+	session, err := h.sessionSvc.GetSession(ctx, sessionID)
 	if err != nil {
 		return err
 	}
-
-	// Idempotency: if session was already ended (e.g., duplicate call),
-	// skip spawning a new pipeline goroutine.
 	if session.Status == "ended" {
 		slog.Debug("session already ended, skipping pipeline", "session_id", sessionID)
 		return nil
+	}
+
+	// Step 1: Close the session (synchronous)
+	session, err = h.sessionSvc.EndSession(ctx, sessionID)
+	if err != nil {
+		return err
 	}
 
 	slog.Info("session ended, starting memory pipeline",
