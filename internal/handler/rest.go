@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/agentmemory/agentmemory/internal/service"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // RESTHandler holds the service dependencies for REST API endpoints.
@@ -123,6 +125,68 @@ func (h *RESTHandler) HandleObserve(w http.ResponseWriter, r *http.Request) {
 		ObservationID: obs.ID,
 		Status:        "recorded",
 	})
+}
+
+// startSessionRequest is the JSON body for POST /v1/api/session/start.
+type startSessionRequest struct {
+	TeamID string `json:"team_id,omitempty"`
+}
+
+// startSessionResponse is the JSON response for a successful session start.
+type startSessionResponse struct {
+	SessionID string `json:"session_id"`
+	StartedAt string `json:"started_at"`
+	Status    string `json:"status"`
+}
+
+// HandleStartSession handles POST /v1/api/session/start — start a new session.
+func (h *RESTHandler) HandleStartSession(w http.ResponseWriter, r *http.Request) {
+	if h.sessionSvc == nil {
+		writeError(w, http.StatusServiceUnavailable, "session service not configured")
+		return
+	}
+
+	userID := GetUserIDFromContext(r.Context())
+	if userID == "" {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var req startSessionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	session, err := h.sessionSvc.CreateSession(r.Context(), userID, req.TeamID)
+	if err != nil {
+		slog.Warn("failed to start session", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to start session")
+		return
+	}
+
+	startedAt := formatTimestamptz(session.StartedAt)
+
+	slog.Info("session started",
+		"session_id", session.ID,
+		"user_id", userID,
+		"team_id", req.TeamID,
+	)
+
+	writeJSON(w, http.StatusCreated, startSessionResponse{
+		SessionID: session.ID,
+		StartedAt: startedAt,
+		Status:    session.Status,
+	})
+}
+
+// formatTimestamptz formats a pgtype.Timestamptz to an RFC3339 string.
+// Returns an empty string if the timestamptz is not valid.
+func formatTimestamptz(ts pgtype.Timestamptz) string {
+	if !ts.Valid {
+		return ""
+	}
+	return ts.Time.Format(time.RFC3339)
 }
 
 // endSessionRequest is the JSON body for POST /v1/api/session/end.

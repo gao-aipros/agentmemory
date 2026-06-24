@@ -308,7 +308,31 @@ Response `201`:
 
 ---
 
-### 3.9 End a session (trigger memory pipeline)
+### 3.9 Start a session
+
+```bash
+curl -s -X POST http://localhost:8080/v1/api/session/start \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"team_id": "optional-team-uuid"}' | jq
+```
+
+`team_id` is optional. The `user_id` is derived automatically from the auth token.
+
+Response `201`:
+```json
+{
+  "session_id": "uuid",
+  "started_at": "2026-06-24T12:00:00Z",
+  "status": "active"
+}
+```
+
+Use the returned `session_id` in subsequent `/v1/api/observe` and `/v1/api/session/end` calls.
+
+---
+
+### 3.10 End a session (trigger memory pipeline)
 
 ```bash
 curl -s -X POST http://localhost:8080/v1/api/session/end \
@@ -331,7 +355,7 @@ This triggers the full memory pipeline: summarization → consolidation → refl
 
 ---
 
-### 3.10 Link a git commit to a session
+### 3.11 Link a git commit to a session
 
 ```bash
 curl -s -X POST http://localhost:8080/v1/api/session/commit \
@@ -358,7 +382,7 @@ Response `200`:
 
 ---
 
-### 3.11 Connect a coding agent (Claude Code / Codex)
+### 3.12 Connect a coding agent (Claude Code / Codex)
 
 ```bash
 ./agentmemory connect \
@@ -370,7 +394,7 @@ This writes the MCP server config into `~/.claude/settings.json` and/or `~/.code
 
 ---
 
-### 3.12 Error response format
+### 3.13 Error response format
 
 All errors follow this shape:
 
@@ -478,12 +502,19 @@ TOKEN=$(curl -s -X POST http://localhost:8080/v1/auth/login \
   --user-id "bbbb-2222-..." \
   --caller-id "aaaa-1111-..."
 
-# ─── 7. Record observations ───
+# ─── 7. Start a session ───
+SESSION_ID=$(curl -s -X POST http://localhost:8080/v1/api/session/start \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}' | jq -r .session_id)
+echo "Session: $SESSION_ID"
+
+# ─── 8. Record observations ───
 curl -s -X POST http://localhost:8080/v1/api/observe \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "session_id": "sprint-42",
+    "session_id": "'$SESSION_ID'",
     "type": "decision",
     "title": "Adopt ParadeDB for search",
     "narrative": "Decided to use ParadeDB for BM25 full-text search.",
@@ -492,24 +523,24 @@ curl -s -X POST http://localhost:8080/v1/api/observe \
     "importance": 0.8
   }' | jq
 
-# ─── 8. End session (trigger memory pipeline) ───
+# ─── 9. End session (trigger memory pipeline) ───
 curl -s -X POST http://localhost:8080/v1/api/session/end \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"session_id": "sprint-42"}' | jq
+  -d '{"session_id": "'$SESSION_ID'"}' | jq
 
-# ─── 9. Link a git commit ───
+# ─── 10. Link a git commit ───
 curl -s -X POST http://localhost:8080/v1/api/session/commit \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "session_id": "sprint-42",
+    "session_id": "'$SESSION_ID'",
     "sha": "'$(git rev-parse HEAD)'",
     "branch": "main",
     "message": "Add ParadeDB search integration"
   }' | jq
 
-# ─── 10. Connect Claude Code ───
+# ─── 11. Connect Claude Code ───
 ./agentmemory connect --url "http://localhost:8080" --token "$TOKEN"
 ```
 
@@ -529,7 +560,7 @@ Pass tokens via `?token=...` query param or `Authorization: Bearer ...` header.
 
 ## 7. Architecture Notes
 
-- **REST API** (13 endpoints): auth, health, observation recording, session lifecycle, SPA viewer.
+- **REST API** (14 endpoints): auth, health, observation recording, session lifecycle, SPA viewer.
 - **MCP interface** (`/v1/mcp`, 50+ tools): team CRUD, user management, memory/lesson CRUD, search, pipeline, slots, signals, sentinels, checkpoints, sketches, routines, snapshots, file history.
 - **CLI** (`agentmemory`): user creation, team management, database setup, agent connection.
 - Team management is **not** available via REST — use the CLI or MCP tools.
