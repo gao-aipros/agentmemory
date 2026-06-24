@@ -174,19 +174,26 @@ func (s *Scheduler) compressSession(ctx context.Context, sessionID string) error
 		return fmt.Errorf("failed to parse batch LLM response: %w", err)
 	}
 
-	// Build batch insert params
-	insertParams := make([]store.BatchInsertCompressedObservationsParams, len(results))
-	for i, r := range results {
-		insertParams[i] = store.BatchInsertCompressedObservationsParams{
+	// Build batch insert params — use min(len(obs), len(results))
+	n := len(obs)
+	if len(results) < n {
+		n = len(results)
+	}
+	if n == 0 {
+		return fmt.Errorf("no results to insert after batch compression")
+	}
+	insertParams := make([]store.BatchInsertCompressedObservationsParams, 0, n)
+	for i := 0; i < n; i++ {
+		insertParams = append(insertParams, store.BatchInsertCompressedObservationsParams{
 			ID:             uuid.New().String(),
 			ObservationIds: []string{obs[i].ID},
 			SessionID:      sessionID,
-			CompressedText: r.CompressedText,
-			Concepts:       r.Concepts,
+			CompressedText: results[i].CompressedText,
+			Concepts:       results[i].Concepts,
 			OwnerType:      obs[i].OwnerType,
 			OwnerUserID:    obs[i].OwnerUserID,
 			Visibility:     obs[i].Visibility,
-		}
+		})
 	}
 
 	// Batch insert via copyfrom
@@ -195,9 +202,9 @@ func (s *Scheduler) compressSession(ctx context.Context, sessionID string) error
 	}
 
 	// Batch embed all compressed texts
-	texts := make([]string, len(results))
-	for i, r := range results {
-		texts[i] = r.CompressedText
+	texts := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		texts = append(texts, results[i].CompressedText)
 	}
 	embeddings, err := s.embed.BatchEmbedDocuments(ctx, texts)
 	if err != nil {

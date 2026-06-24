@@ -3,7 +3,6 @@ package integration
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/agentmemory/agentmemory/internal/service"
 	"github.com/agentmemory/agentmemory/internal/store"
@@ -65,8 +64,12 @@ func TestPipelineObserveToCompressed(t *testing.T) {
 	assert.Equal(t, obs.ID, storedObs.ID)
 	assert.Equal(t, sessionID, storedObs.SessionID)
 
-	// Step 3: Wait for async compression to complete
-	time.Sleep(2 * time.Second)
+	// Step 3: Compress observations via scheduler (replaces old async TriggerAsync)
+	llmSvc := NewMockLLMService()
+	embedSvc := service.NewEmbeddingServiceWithEmbedder(nil)
+	scheduler := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{})
+	err = scheduler.CompressSessionNow(ctx, sessionID)
+	require.NoError(t, err, "CompressSessionNow should succeed")
 
 	// Step 4: Verify compressed observation was created
 	compressedObs, err := queries.ListCompressedBySession(ctx, sessionID)

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"log/slog"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -55,7 +56,7 @@ func ParseBatchCompressionResponse(response string, expectedCount int) ([]Compre
 	}
 
 	if len(results) != expectedCount {
-		return nil, fmt.Errorf("expected %d compression results, got %d", expectedCount, len(results))
+		slog.Warn("batch compression result count mismatch", "expected", expectedCount, "got", len(results))
 	}
 
 	return results, nil

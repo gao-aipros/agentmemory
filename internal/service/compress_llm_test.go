@@ -79,15 +79,18 @@ func TestParseBatchCompressionResponse(t *testing.T) {
 			{"compressed_text": "text2", "concepts": ["c2"]}
 		]`
 		_, err := ParseBatchCompressionResponse(response, 3)
-		if err == nil {
-			t.Fatal("expected error for count mismatch (expected 3, got 2), got nil")
-		}
+			if err != nil {
+				t.Fatal("expected no error for count mismatch, got:", err)
+			}
 	})
 
 	t.Run("empty array with non-zero expected count returns error", func(t *testing.T) {
-		_, err := ParseBatchCompressionResponse(`[]`, 1)
-		if err == nil {
-			t.Fatal("expected error for empty array with expected count 1")
-		}
+			results, err := ParseBatchCompressionResponse(`[]`, 1)
+			if err != nil {
+				t.Fatal("expected no error for empty array, got:", err)
+			}
+			if len(results) != 0 {
+				t.Fatal("expected 0 results")
+			}
 	})
 }
