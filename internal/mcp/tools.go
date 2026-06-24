@@ -1315,6 +1315,10 @@ func registerMemoryConsolidate(mcpServer *mcp.Server, svc *ServiceBundle) {
 			}, nil
 		}
 
+		// Set owner from auth context so memories/lessons satisfy FK constraints
+		userID := auth.GetUserIDFromContext(ctx)
+		svc.Consolidation.SetOwner(userID, "")
+
 		// Run consolidation
 		if err := svc.Consolidation.ConsolidateSession(ctx, sessionID); err != nil {
 			return &mcp.CallToolResult{

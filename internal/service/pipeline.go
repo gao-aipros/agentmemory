@@ -141,6 +141,12 @@ func NewConsolidationService(pool *pgxpool.Pool, llm *LLMService, mode Consolida
 	}
 }
 
+// SetOwner sets the user and team IDs that own the consolidated memories and lessons.
+func (s *ConsolidationService) SetOwner(userID, teamID string) {
+	s.mode.OwnerUserID = userID
+	s.mode.OwnerTeamID = teamID
+}
+
 // ConsolidateSession extracts memories and lessons from the session summary.
 func (s *ConsolidationService) ConsolidateSession(ctx context.Context, sessionID string) error {
 	// Get the session summary
@@ -177,6 +183,15 @@ func (s *ConsolidationService) ConsolidateSession(ctx context.Context, sessionID
 		return fmt.Errorf("failed to parse consolidation response: %w", err)
 	}
 
+	// Compute effective owner IDs (nil when empty, to satisfy FK constraints).
+	var ownerUserID, ownerTeamID *string
+	if s.mode.OwnerUserID != "" {
+		ownerUserID = &s.mode.OwnerUserID
+	}
+	if s.mode.OwnerTeamID != "" {
+		ownerTeamID = &s.mode.OwnerTeamID
+	}
+
 	// Store extracted memories via batch insert (avoids N+1 writes).
 	if len(result.Memories) > 0 {
 		visibility := "private"
@@ -190,8 +205,8 @@ func (s *ConsolidationService) ConsolidateSession(ctx context.Context, sessionID
 			memRows = append(memRows, store.BatchInsertMemoriesParams{
 				ID:          uuid.New().String(),
 				OwnerType:   "user",
-				OwnerUserID: &s.mode.OwnerUserID,
-				OwnerTeamID: &s.mode.OwnerTeamID,
+				OwnerUserID: ownerUserID,
+				OwnerTeamID: ownerTeamID,
 				Visibility:  visibility,
 				Content:     m.Content,
 				Concepts:    m.Concepts,
@@ -212,7 +227,7 @@ func (s *ConsolidationService) ConsolidateSession(ctx context.Context, sessionID
 		for _, l := range result.Lessons {
 			lessonRows = append(lessonRows, store.BatchInsertLessonsParams{
 				ID:         uuid.New().String(),
-				TeamID:     &s.mode.OwnerTeamID,
+				TeamID:     ownerTeamID,
 				Visibility: "team",
 				Content:    l.Content,
 				Context:    &l.Context,
