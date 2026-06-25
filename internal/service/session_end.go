@@ -18,11 +18,11 @@ type sessionEndSessioner interface {
 
 // SessionEndHandler orchestrates the end-of-session pipeline:
 // 1. Close session (update ended_at, status=ended)
-// 2. Trigger summarize (async)
-// 3. After summarize: trigger consolidate (async)
-// 4. After consolidate: trigger reflect timer check
+// 2. Trigger compression (via Scheduler, async)
+// 3. After compression: trigger full summarization (via Scheduler, async)
 type SessionEndHandler struct {
 	sessionSvc   sessionEndSessioner
+	scheduler    *Scheduler
 	summarizer   *SummarizationService
 	consolidator *ConsolidationService
 	reflector    *ReflectionService
@@ -33,6 +33,7 @@ type SessionEndHandler struct {
 // NewSessionEndHandler creates a new SessionEndHandler.
 func NewSessionEndHandler(
 	sessionSvc *SessionService,
+	scheduler *Scheduler,
 	summarizer *SummarizationService,
 	consolidator *ConsolidationService,
 	reflector *ReflectionService,
@@ -41,6 +42,7 @@ func NewSessionEndHandler(
 ) *SessionEndHandler {
 	return &SessionEndHandler{
 		sessionSvc:   sessionSvc,
+		scheduler:    scheduler,
 		summarizer:   summarizer,
 		consolidator: consolidator,
 		reflector:    reflector,
@@ -100,41 +102,37 @@ func (h *SessionEndHandler) Wait() {
 	h.wg.Wait()
 }
 
-// runPipeline executes the summarize → consolidate → reflect chain.
+// runPipeline executes the compress → summarize chain via the Scheduler.
+// Consolidate and reflect are handled by the Scheduler's periodic tiers (US4).
 func (h *SessionEndHandler) runPipeline(sessionID string) {
 	defer func() {
 		if r := recover(); r != nil {
-			slog.Error("pipeline run panicked", "session_id", sessionID, "panic", r)
+			slog.Error("pipeline goroutine panicked", "session_id", sessionID, "panic", r)
 		}
 	}()
 	bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	// Step 2: Summarize
-	if h.summarizer != nil {
+	// Step 2: Compress observations via Scheduler
+	if h.scheduler != nil {
+		slog.Info("starting session compression", "session_id", sessionID)
+		if err := h.scheduler.CompressSessionNow(bgCtx, sessionID); err != nil {
+			slog.Warn("session compression failed",
+				"session_id", sessionID,
+				"error", err,
+			)
+			// Continue to summarization even if compression fails
+		}
+	}
+
+	// Step 3: Full summarization via Scheduler
+	if h.scheduler != nil {
 		slog.Info("starting session summarization", "session_id", sessionID)
-		if err := h.summarizer.SummarizeSession(bgCtx, sessionID); err != nil {
+		if err := h.scheduler.SummarizeSessionNow(bgCtx, sessionID, true); err != nil {
 			slog.Warn("session summarization failed",
 				"session_id", sessionID,
 				"error", err,
 			)
-			return // Don't continue if summarization failed
 		}
-	}
-
-	// Step 3: Consolidate
-	if h.consolidator != nil {
-		slog.Info("starting session consolidation", "session_id", sessionID)
-		if err := h.consolidator.ConsolidateSession(bgCtx, sessionID); err != nil {
-			slog.Warn("session consolidation failed",
-				"session_id", sessionID,
-				"error", err,
-			)
-		}
-	}
-
-	// Step 4: Trigger reflection timer check
-	if h.reflector != nil {
-		h.reflector.TriggerTimerCheck(bgCtx)
 	}
 }

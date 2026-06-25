@@ -10,7 +10,7 @@ import (
 )
 
 const getSessionSummary = `-- name: GetSessionSummary :one
-SELECT id, session_id, owner_type, owner_user_id, owner_team_id, visibility, summary_text, concepts, created_at FROM session_summaries WHERE session_id = $1
+SELECT id, session_id, owner_type, owner_user_id, owner_team_id, visibility, summary_text, concepts, created_at, is_full FROM session_summaries WHERE session_id = $1
 `
 
 func (q *Queries) GetSessionSummary(ctx context.Context, sessionID string) (SessionSummary, error) {
@@ -26,12 +26,13 @@ func (q *Queries) GetSessionSummary(ctx context.Context, sessionID string) (Sess
 		&i.SummaryText,
 		&i.Concepts,
 		&i.CreatedAt,
+		&i.IsFull,
 	)
 	return i, err
 }
 
 const listSummariesBySession = `-- name: ListSummariesBySession :many
-SELECT id, session_id, owner_type, owner_user_id, owner_team_id, visibility, summary_text, concepts, created_at FROM session_summaries WHERE session_id = $1 ORDER BY created_at DESC
+SELECT id, session_id, owner_type, owner_user_id, owner_team_id, visibility, summary_text, concepts, created_at, is_full FROM session_summaries WHERE session_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListSummariesBySession(ctx context.Context, sessionID string) ([]SessionSummary, error) {
@@ -53,6 +54,7 @@ func (q *Queries) ListSummariesBySession(ctx context.Context, sessionID string) 
 			&i.SummaryText,
 			&i.Concepts,
 			&i.CreatedAt,
+			&i.IsFull,
 		); err != nil {
 			return nil, err
 		}
@@ -65,7 +67,7 @@ func (q *Queries) ListSummariesBySession(ctx context.Context, sessionID string) 
 }
 
 const listSummariesByUserID = `-- name: ListSummariesByUserID :many
-SELECT ss.id, ss.session_id, ss.owner_type, ss.owner_user_id, ss.owner_team_id, ss.visibility, ss.summary_text, ss.concepts, ss.created_at FROM session_summaries ss
+SELECT ss.id, ss.session_id, ss.owner_type, ss.owner_user_id, ss.owner_team_id, ss.visibility, ss.summary_text, ss.concepts, ss.created_at, ss.is_full FROM session_summaries ss
 JOIN sessions s ON ss.session_id = s.id
 WHERE s.user_id = $1
 ORDER BY ss.created_at DESC
@@ -96,6 +98,7 @@ func (q *Queries) ListSummariesByUserID(ctx context.Context, arg ListSummariesBy
 			&i.SummaryText,
 			&i.Concepts,
 			&i.CreatedAt,
+			&i.IsFull,
 		); err != nil {
 			return nil, err
 		}
@@ -108,13 +111,14 @@ func (q *Queries) ListSummariesByUserID(ctx context.Context, arg ListSummariesBy
 }
 
 const upsertSessionSummary = `-- name: UpsertSessionSummary :one
-INSERT INTO session_summaries (id, session_id, visibility, summary_text, concepts)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO session_summaries (id, session_id, visibility, summary_text, concepts, is_full)
+VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (session_id) DO UPDATE SET
     summary_text = EXCLUDED.summary_text,
     concepts = EXCLUDED.concepts,
-    visibility = EXCLUDED.visibility
-RETURNING id, session_id, owner_type, owner_user_id, owner_team_id, visibility, summary_text, concepts, created_at
+    visibility = EXCLUDED.visibility,
+    is_full = EXCLUDED.is_full
+RETURNING id, session_id, owner_type, owner_user_id, owner_team_id, visibility, summary_text, concepts, created_at, is_full
 `
 
 type UpsertSessionSummaryParams struct {
@@ -123,6 +127,7 @@ type UpsertSessionSummaryParams struct {
 	Visibility  string
 	SummaryText string
 	Concepts    []string
+	IsFull      bool
 }
 
 func (q *Queries) UpsertSessionSummary(ctx context.Context, arg UpsertSessionSummaryParams) (SessionSummary, error) {
@@ -132,6 +137,7 @@ func (q *Queries) UpsertSessionSummary(ctx context.Context, arg UpsertSessionSum
 		arg.Visibility,
 		arg.SummaryText,
 		arg.Concepts,
+		arg.IsFull,
 	)
 	var i SessionSummary
 	err := row.Scan(
@@ -144,6 +150,7 @@ func (q *Queries) UpsertSessionSummary(ctx context.Context, arg UpsertSessionSum
 		&i.SummaryText,
 		&i.Concepts,
 		&i.CreatedAt,
+		&i.IsFull,
 	)
 	return i, err
 }

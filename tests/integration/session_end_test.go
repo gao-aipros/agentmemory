@@ -15,8 +15,8 @@ import (
 )
 
 // TestSessionEndTriggersPipeline tests that ending a session triggers
-// the summarize → consolidate pipeline and creates session_summaries,
-// memories, and lessons.
+// the compress → summarize pipeline via the Scheduler and creates
+// compressed_observations and session_summaries with is_full=true.
 func TestSessionEndTriggersPipeline(t *testing.T) {
 	// Parallel removed — shared container requires sequential execution
 
@@ -40,8 +40,7 @@ func TestSessionEndTriggersPipeline(t *testing.T) {
 	// Record some observations first
 	llmSvc := NewMockLLMService()
 	embedSvc := service.NewEmbeddingServiceWithEmbedder(nil)
-	compressor := service.NewCompressionService(db.Pool, llmSvc, embedSvc)
-	obsSvc := service.NewObservationService(db.Pool, compressor)
+	obsSvc := service.NewObservationService(db.Pool)
 
 	// Add a few observations
 	for i, obsType := range []string{
@@ -60,17 +59,15 @@ func TestSessionEndTriggersPipeline(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Wait for compression to complete
-	time.Sleep(2 * time.Second)
-
-	// Set up session end handler
+	// Set up session end handler with Scheduler
 	sessionSvc := service.NewSessionService(db.Pool)
+	scheduler := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{})
 	summarizer := service.NewSummarizationService(db.Pool, llmSvc)
 	mode := service.DefaultConsolidationMode("member_choice", false)
 	mode.OwnerUserID = userID
 	consolidator := service.NewConsolidationService(db.Pool, llmSvc, mode)
 	reflector := service.NewReflectionService(db.Pool, 3600)
-	sessionEndH := service.NewSessionEndHandler(sessionSvc, summarizer, consolidator, reflector, &sync.WaitGroup{}, semaphore.NewWeighted(20))
+	sessionEndH := service.NewSessionEndHandler(sessionSvc, scheduler, summarizer, consolidator, reflector, &sync.WaitGroup{}, semaphore.NewWeighted(20))
 
 	// End the session
 	err = sessionEndH.HandleSessionEnd(ctx, sessionID)
@@ -94,21 +91,22 @@ func TestSessionEndTriggersPipeline(t *testing.T) {
 	}
 	require.NotNil(t, sessionSummary, "session summary should have been created")
 	assert.NotEmpty(t, sessionSummary.SummaryText)
+	assert.True(t, sessionSummary.IsFull, "session-end summary should have is_full=true")
 	assert.Contains(t, sessionSummary.SummaryText, "Session summary")
 
-	// Verify memories were extracted — poll since pipeline runs async
-	var memories []store.Memory
+	// Verify compressed observations were created by CompressSessionNow
+	var compressedObs []store.CompressedObservation
 	for i := 0; i < 5; i++ {
 		time.Sleep(1 * time.Second)
-		memories, err = queries.ListMemoriesByOwner(ctx, store.ListMemoriesByOwnerParams{
-				OwnerUserID: &userID,
-				Limit:       50,
-			})
-		if err == nil && len(memories) > 0 {
+		compressedObs, err = queries.ListCompressedBySession(ctx, sessionID)
+		if err == nil && len(compressedObs) > 0 {
 			break
 		}
 	}
-	assert.NotEmpty(t, memories, "memories should have been extracted from consolidation")
+	assert.NotEmpty(t, compressedObs, "compressed observations should have been created")
+	if len(compressedObs) > 0 {
+		assert.NotEmpty(t, compressedObs[0].CompressedText)
+	}
 }
 
 // TestSessionEndRequiresObservations tests that ending a session with no
@@ -134,12 +132,14 @@ func TestSessionEndNoObservations(t *testing.T) {
 
 	// Set up session end handler without observations
 	llmSvc := NewMockLLMService()
+	embedSvc := service.NewEmbeddingServiceWithEmbedder(nil)
+	scheduler := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{})
 	sessionSvc := service.NewSessionService(db.Pool)
 	summarizer := service.NewSummarizationService(db.Pool, llmSvc)
 	mode := service.DefaultConsolidationMode("member_choice", false)
 	consolidator := service.NewConsolidationService(db.Pool, llmSvc, mode)
 	reflector := service.NewReflectionService(db.Pool, 3600)
-	sessionEndH := service.NewSessionEndHandler(sessionSvc, summarizer, consolidator, reflector, &sync.WaitGroup{}, semaphore.NewWeighted(20))
+	sessionEndH := service.NewSessionEndHandler(sessionSvc, scheduler, summarizer, consolidator, reflector, &sync.WaitGroup{}, semaphore.NewWeighted(20))
 
 	// End session (should handle empty observations gracefully)
 	err = sessionEndH.HandleSessionEnd(ctx, sessionID)

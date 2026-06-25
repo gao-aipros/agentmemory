@@ -415,20 +415,39 @@ func TestMCP_PipelineE2E(t *testing.T) {
 	}
 	t.Logf("Recorded %d observations", len(types))
 
-	// ---- Step 3: Wait for async compression + embedding ----
-	t.Run("Tier0_Compression", func(t *testing.T) {
-		// Compression groups observations by session
+	// ---- Step 3: Verify observations are NOT immediately compressed ----
+	// With the scheduler pipeline, compression only happens via session-end or periodic
+	// scheduler tiers. Observations recorded via MCP should NOT be compressed immediately.
+	var initialCompressedCount int
+	pool.QueryRow(ctx, fmt.Sprintf(
+		"SELECT COUNT(*) FROM compressed_observations WHERE session_id = '%s'", sessionID,
+	)).Scan(&initialCompressedCount)
+	assert.Equal(t, 0, initialCompressedCount,
+		"observations should NOT be compressed immediately -- compression is session-end or scheduler-triggered only")
+	t.Logf("Verified: no auto-compression (compressed_observations count = %d)", initialCompressedCount)
+
+	// ---- Step 4: End session via REST -- triggers compression + summarization ----
+	t.Run("SessionEnd_CompressionAndSummarization", func(t *testing.T) {
+		// Use REST POST /v1/api/session/end to trigger the session-end handler.
+		// This asynchronously runs CompressSessionNow + SummarizeSessionNow (isFull=true).
+		status, _, err := restDo("POST", "/v1/api/session/end", map[string]any{
+			"session_id": sessionID,
+		}, apiKey)
+		require.NoError(t, err, "session end request")
+		require.Equal(t, 200, status, "session end HTTP 200")
+
+		// Wait for compression (Tier 0 -- happens asynchronously in runPipeline goroutine)
 		pollDB(t, pool,
 			fmt.Sprintf("SELECT COUNT(*) FROM compressed_observations WHERE session_id = '%s'", sessionID),
 			1, 60*time.Second)
 
 		// Verify compressed text is non-empty (LLM worked)
 		var nonEmptyCount int
-		err := pool.QueryRow(ctx, fmt.Sprintf(
+		err = pool.QueryRow(ctx, fmt.Sprintf(
 			"SELECT COUNT(*) FROM compressed_observations WHERE session_id = '%s' AND compressed_text != ''", sessionID,
 		)).Scan(&nonEmptyCount)
 		require.NoError(t, err)
-		assert.GreaterOrEqual(t, nonEmptyCount, 1, "at least one compressed_text should be non-empty (LLM compression worked)")
+		assert.GreaterOrEqual(t, nonEmptyCount, 1, "at least one compressed_text should be non-empty")
 
 		// Verify compressed_embeddings (may fail if embedding model name is misconfigured)
 		var embCount int
@@ -437,20 +456,40 @@ func TestMCP_PipelineE2E(t *testing.T) {
 		)).Scan(&embCount)
 		require.NoError(t, err)
 		if embCount == 0 {
-			t.Log("WARNING: no embeddings found — check EMBEDDING_MODEL in .env (should be 'text-embedding-3-small')")
+			t.Log("WARNING: no embeddings found -- check EMBEDDING_MODEL in .env")
 		} else {
-			t.Logf("Embeddings: %d (embedding API worked)", embCount)
+			t.Logf("Embeddings: %d", embCount)
 		}
+
+		// Verify session-end summary created with is_full=true
+		// (session-end sets isFull=true, mid-scheduler sets isFull=false)
+		var summaryText string
+		err = pool.QueryRow(ctx,
+			"SELECT summary_text FROM session_summaries WHERE session_id = $1", sessionID,
+		).Scan(&summaryText)
+		require.NoError(t, err, "session summary should exist after session-end")
+		assert.NotEmpty(t, summaryText, "summary_text should be non-empty (LLM summarization worked)")
+
+		var isFull bool
+		err = pool.QueryRow(ctx,
+			"SELECT is_full FROM session_summaries WHERE session_id = $1", sessionID,
+		).Scan(&isFull)
+		require.NoError(t, err)
+		assert.True(t, isFull, "session-end summary should have is_full=true (not mid-session)")
+		t.Logf("Session-end summary: %d chars, is_full=%v", len(summaryText), isFull)
 	})
 
-	// ---- Step 4: Get user ID for consolidation context ----
+	// ---- Step 5: Get user ID for consolidation context ----
 	var userID string
 	err = pool.QueryRow(ctx, "SELECT id FROM users LIMIT 1").Scan(&userID)
 	require.NoError(t, err, "get user ID")
 	t.Logf("User ID: %s", userID)
 
-	// ---- Step 5: Run full consolidation via MCP (summarize → consolidate → reflect) ----
-	t.Run("Tier1_Summarization", func(t *testing.T) {
+	// ---- Step 6: Consolidation + reflection via MCP (scheduler-only, not at session-end) ----
+	t.Run("Consolidation_And_Reflection", func(t *testing.T) {
+		// memory_consolidate triggers summarize + consolidate + reflect via MCP.
+		// Consolidation and reflection are NOT part of session-end -- they are
+		// scheduler-tier operations (Tier 2 and Tier 3) or explicit MCP calls.
 		result, err := session.CallTool(ctx, &mcp.CallToolParams{
 			Name: "memory_consolidate",
 			Arguments: map[string]any{
@@ -462,34 +501,22 @@ func TestMCP_PipelineE2E(t *testing.T) {
 		require.NoError(t, err, "memory_consolidate call")
 		require.False(t, result.IsError, "memory_consolidate should succeed")
 
-		// Verify session_summary was created (LLM summarization)
-		var summaryText string
-		err = pool.QueryRow(ctx,
-			"SELECT summary_text FROM session_summaries WHERE session_id = $1", sessionID,
-		).Scan(&summaryText)
-		require.NoError(t, err)
-		assert.NotEmpty(t, summaryText, "summary_text should be non-empty (LLM summarization worked)")
-		t.Logf("Summary length: %d chars", len(summaryText))
-	})
-
-	// ---- Step 6: Verify consolidation output (memories + lessons) ----
-	t.Run("Tier2_Consolidation", func(t *testing.T) {
+		// Verify consolidation output: memories + lessons with source='consolidation'
 		var memCount, lesCount int
 		pool.QueryRow(ctx, "SELECT COUNT(*) FROM memories WHERE source = 'consolidation'").Scan(&memCount)
 		pool.QueryRow(ctx, "SELECT COUNT(*) FROM lessons WHERE source = 'consolidation'").Scan(&lesCount)
 		assert.GreaterOrEqual(t, memCount, 1, "memories should exist (LLM consolidation worked)")
 		assert.GreaterOrEqual(t, lesCount, 1, "lessons should exist (LLM consolidation worked)")
-		t.Logf("Memories: %d, Lessons: %d", memCount, lesCount)
-	})
+		t.Logf("Consolidation: %d memories, %d lessons", memCount, lesCount)
 
-	// ---- Step 7: Verify reflection output (insights) ----
-	t.Run("Tier3_Reflection", func(t *testing.T) {
+		// Verify reflection output: insights with source='reflect'
 		var insCount int
 		pool.QueryRow(ctx, "SELECT COUNT(*) FROM insights WHERE source = 'reflect'").Scan(&insCount)
 		assert.GreaterOrEqual(t, insCount, 1, "insights should exist (reflection worked)")
+		t.Logf("Reflection: %d insights", insCount)
 	})
 
-	// ---- Step 8: Vector search verifies embedding + search end-to-end ----
+	// ---- Step 7: Vector search verifies embedding + search end-to-end ----
 	t.Run("Vector_Search", func(t *testing.T) {
 		result, err := session.CallTool(ctx, &mcp.CallToolParams{
 			Name: "memory_smart_search",

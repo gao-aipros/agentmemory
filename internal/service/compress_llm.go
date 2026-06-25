@@ -1,6 +1,7 @@
 package service
 
 import (
+	"log/slog"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -10,6 +11,55 @@ import (
 type CompressionResult struct {
 	CompressedText string   `json:"compressed_text"`
 	Concepts       []string `json:"concepts"`
+}
+
+// ObservationForCompression holds the fields needed for batch compression prompt building.
+type ObservationForCompression struct {
+	Title     string
+	Narrative string
+	Facts     string
+	Concepts  []string
+}
+
+// BuildBatchCompressionPrompt assembles multiple observations into a single LLM prompt
+// that requests batch compression. The response format is a JSON array of CompressionResult.
+func BuildBatchCompressionPrompt(obs []ObservationForCompression) string {
+	var sb strings.Builder
+
+	sb.WriteString("Compress the following ")
+	sb.WriteString(fmt.Sprintf("%d", len(obs)))
+	sb.WriteString(" observations into concise summaries. ")
+	sb.WriteString("Extract key concepts for each. ")
+	sb.WriteString("Respond ONLY with a JSON array: [{\"compressed_text\": \"...\", \"concepts\": [\"...\"]}]\n\n")
+
+	for i, o := range obs {
+		idx := i + 1
+		sb.WriteString(fmt.Sprintf("[%d] Title: %s | Narrative: %s", idx, o.Title, o.Narrative))
+		if o.Facts != "" {
+			sb.WriteString(fmt.Sprintf(" | Facts: %s", o.Facts))
+		}
+		if len(o.Concepts) > 0 {
+			sb.WriteString(fmt.Sprintf(" | Concepts: %s", strings.Join(o.Concepts, ", ")))
+		}
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}
+
+// ParseBatchCompressionResponse parses the LLM JSON array response into a slice of
+// CompressionResult. Validates that the count matches expectedCount.
+func ParseBatchCompressionResponse(response string, expectedCount int) ([]CompressionResult, error) {
+	var results []CompressionResult
+	if err := json.Unmarshal([]byte(response), &results); err != nil {
+		return nil, fmt.Errorf("failed to parse batch compression response: %w", err)
+	}
+
+	if len(results) != expectedCount {
+		slog.Warn("batch compression result count mismatch", "expected", expectedCount, "got", len(results))
+	}
+
+	return results, nil
 }
 
 // BuildCompressionPrompt assembles observation fields into an LLM prompt

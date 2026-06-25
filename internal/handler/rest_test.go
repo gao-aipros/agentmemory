@@ -15,7 +15,7 @@ import (
 // pool, so calling RecordObservation on it will fail — this is safe only
 // for tests that exercise validation paths before the RecordObservation call.
 func testObsSvc() *service.ObservationService {
-	return service.NewObservationService(nil, nil)
+	return service.NewObservationService(nil)
 }
 
 // TestHandleCommitSession_NilService verifies that HandleCommitSession returns

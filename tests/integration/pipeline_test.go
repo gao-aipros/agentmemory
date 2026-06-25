@@ -3,7 +3,6 @@ package integration
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/agentmemory/agentmemory/internal/service"
 	"github.com/agentmemory/agentmemory/internal/store"
@@ -37,11 +36,7 @@ func TestPipelineObserveToCompressed(t *testing.T) {
 		sessionID, userID)
 	require.NoError(t, err)
 
-	// Set up services with mock LLM
-	llmSvc := NewMockLLMService()
-	embedSvc := service.NewEmbeddingServiceWithEmbedder(nil) // No embed provider for test
-	compressor := service.NewCompressionService(db.Pool, llmSvc, embedSvc)
-	obsSvc := service.NewObservationService(db.Pool, compressor)
+	obsSvc := service.NewObservationService(db.Pool)
 
 	// Step 1: Observe — record an observation
 	input := service.RecordObservationInput{
@@ -69,8 +64,12 @@ func TestPipelineObserveToCompressed(t *testing.T) {
 	assert.Equal(t, obs.ID, storedObs.ID)
 	assert.Equal(t, sessionID, storedObs.SessionID)
 
-	// Step 3: Wait for async compression to complete
-	time.Sleep(2 * time.Second)
+	// Step 3: Compress observations via scheduler (replaces old async TriggerAsync)
+	llmSvc := NewMockLLMService()
+	embedSvc := service.NewEmbeddingServiceWithEmbedder(nil)
+	scheduler := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{})
+	err = scheduler.CompressSessionNow(ctx, sessionID)
+	require.NoError(t, err, "CompressSessionNow should succeed")
 
 	// Step 4: Verify compressed observation was created
 	compressedObs, err := queries.ListCompressedBySession(ctx, sessionID)
@@ -110,7 +109,7 @@ func TestPipelineObserveTypeValidation(t *testing.T) {
 		sessionID, userID)
 	require.NoError(t, err)
 
-	obsSvc := service.NewObservationService(db.Pool, nil)
+	obsSvc := service.NewObservationService(db.Pool)
 
 	// Try invalid type
 	_, err = obsSvc.RecordObservation(ctx, service.RecordObservationInput{
@@ -145,7 +144,7 @@ func TestPipelineImportanceValidation(t *testing.T) {
 		sessionID, userID)
 	require.NoError(t, err)
 
-	obsSvc := service.NewObservationService(db.Pool, nil)
+	obsSvc := service.NewObservationService(db.Pool)
 
 	// Try invalid importance
 	_, err = obsSvc.RecordObservation(ctx, service.RecordObservationInput{

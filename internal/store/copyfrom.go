@@ -9,6 +9,45 @@ import (
 	"context"
 )
 
+// iteratorForBatchInsertCompressedObservations implements pgx.CopyFromSource.
+type iteratorForBatchInsertCompressedObservations struct {
+	rows                 []BatchInsertCompressedObservationsParams
+	skippedFirstNextCall bool
+}
+
+func (r *iteratorForBatchInsertCompressedObservations) Next() bool {
+	if len(r.rows) == 0 {
+		return false
+	}
+	if !r.skippedFirstNextCall {
+		r.skippedFirstNextCall = true
+		return true
+	}
+	r.rows = r.rows[1:]
+	return len(r.rows) > 0
+}
+
+func (r iteratorForBatchInsertCompressedObservations) Values() ([]interface{}, error) {
+	return []interface{}{
+		r.rows[0].ID,
+		r.rows[0].ObservationIds,
+		r.rows[0].SessionID,
+		r.rows[0].CompressedText,
+		r.rows[0].Concepts,
+		r.rows[0].OwnerType,
+		r.rows[0].OwnerUserID,
+		r.rows[0].Visibility,
+	}, nil
+}
+
+func (r iteratorForBatchInsertCompressedObservations) Err() error {
+	return nil
+}
+
+func (q *Queries) BatchInsertCompressedObservations(ctx context.Context, arg []BatchInsertCompressedObservationsParams) (int64, error) {
+	return q.db.CopyFrom(ctx, []string{"compressed_observations"}, []string{"id", "observation_ids", "session_id", "compressed_text", "concepts", "owner_type", "owner_user_id", "visibility"}, &iteratorForBatchInsertCompressedObservations{rows: arg})
+}
+
 // iteratorForBatchInsertLessons implements pgx.CopyFromSource.
 type iteratorForBatchInsertLessons struct {
 	rows                 []BatchInsertLessonsParams

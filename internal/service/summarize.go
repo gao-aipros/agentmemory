@@ -99,6 +99,65 @@ func BuildSummarizePrompt(observations []SummarizeObservation) string {
 	return sb.String()
 }
 
+// BuildIncrementalSummarizePrompt assembles an incremental summarization prompt.
+// When existingSummary is non-empty, the prompt asks the LLM to update the existing
+// summary with new observations. When empty, the prompt requests a new summary from
+// the provided observations.
+func BuildIncrementalSummarizePrompt(existingSummary string, newObservations []SummarizeObservation) string {
+	var sb strings.Builder
+
+	if existingSummary != "" {
+		sb.WriteString("You are updating an existing session summary with new observations. ")
+		sb.WriteString("Incorporate the new information into the existing summary. ")
+		sb.WriteString("Do not repeat the existing summary verbatim — update it naturally ")
+		sb.WriteString("by merging the new observations into the appropriate sections.\n\n")
+
+		sb.WriteString("=== EXISTING SUMMARY ===\n")
+		sb.WriteString(existingSummary)
+		sb.WriteString("\n\n")
+	} else {
+		sb.WriteString("Summarize the following agent session observations. ")
+		sb.WriteString("Provide a concise overview of what happened, key decisions made, and important context. ")
+		sb.WriteString("Include extracted concepts.\n\n")
+	}
+
+	if len(newObservations) > 0 {
+		sb.WriteString("=== OBSERVATIONS ===\n\n")
+		for i, obs := range newObservations {
+			sb.WriteString("--- Observation ")
+			sb.WriteString(formatInt(i + 1))
+			sb.WriteString(" ---\n")
+			sb.WriteString("Title: ")
+			sb.WriteString(obs.Title)
+			sb.WriteString("\n")
+			sb.WriteString("Narrative: ")
+			sb.WriteString(obs.Narrative)
+			sb.WriteString("\n")
+
+			if obs.Facts != "" {
+				sb.WriteString("Facts: ")
+				sb.WriteString(obs.Facts)
+				sb.WriteString("\n")
+			}
+
+			if len(obs.Concepts) > 0 {
+				sb.WriteString("Concepts: ")
+				sb.WriteString(strings.Join(obs.Concepts, ", "))
+				sb.WriteString("\n")
+			}
+			sb.WriteString("\n")
+		}
+	}
+
+	if existingSummary != "" {
+		sb.WriteString("Provide an updated summary that incorporates the new observations ")
+		sb.WriteString("while maintaining the key points from the existing summary. ")
+		sb.WriteString("Focus on what changed or what new information was added.\n")
+	}
+
+	return sb.String()
+}
+
 // formatInt is a simple integer formatter using rune conversion.
 // Avoids importing fmt for this one small use case.
 func formatInt(n int) string {

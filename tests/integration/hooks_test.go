@@ -33,7 +33,7 @@ func TestAllThirteenHookTypes(t *testing.T) {
 		sessionID, userID)
 	require.NoError(t, err)
 
-	obsSvc := service.NewObservationService(db.Pool, nil)
+	obsSvc := service.NewObservationService(db.Pool)
 
 	// Record all 13 hook types
 	allTypes := service.ValidHookTypes
@@ -96,7 +96,7 @@ func TestHookTypeSpecificFields(t *testing.T) {
 		sessionID, userID)
 	require.NoError(t, err)
 
-	obsSvc := service.NewObservationService(db.Pool, nil)
+	obsSvc := service.NewObservationService(db.Pool)
 
 	// Pre-tool-use hook with tool metadata
 	preToolObs, err := obsSvc.RecordObservation(ctx, service.RecordObservationInput{

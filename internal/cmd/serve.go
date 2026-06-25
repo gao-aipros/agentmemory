@@ -13,6 +13,7 @@ import (
 	"github.com/agentmemory/agentmemory/internal/config"
 	"github.com/agentmemory/agentmemory/internal/handler"
 	"github.com/agentmemory/agentmemory/internal/mcp"
+	"github.com/agentmemory/agentmemory/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -91,6 +92,17 @@ Use --migrate-on-startup to auto-apply pending migrations.`,
 			// Create shared ServiceBundle once — both REST router and MCP handler
 			// use the same service instances, avoiding duplicate wiring.
 			bundle := mcp.NewServiceBundle(pool)
+
+			// Start pipeline scheduler (in-process, goroutine-based)
+			schedulerCtx, schedulerCancel := context.WithCancel(context.Background())
+			defer schedulerCancel()
+			scheduler := service.NewScheduler(pool, bundle.LLM, bundle.Embedding, service.SchedulerIntervals{
+				Compression:   cfg.CompressionInterval,
+				Summarization: cfg.SummarizationInterval,
+				Consolidation: cfg.ConsolidationInterval,
+				Reflection:    cfg.ReflectionInterval,
+			})
+			scheduler.Start(schedulerCtx)
 
 			// Create HTTP router with the shared bundle and config
 			router := handler.NewRouter(bundle, cfg)

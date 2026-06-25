@@ -11,10 +11,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// ObservationService records agent observations and triggers downstream compression.
+// ObservationService records agent observations.
 type ObservationService struct {
-	queries    *store.Queries
-	compressor *CompressionService
+	queries *store.Queries
 }
 
 // RecordObservationInput is the input for recording a new observation.
@@ -33,10 +32,9 @@ type RecordObservationInput struct {
 }
 
 // NewObservationService creates a new ObservationService.
-func NewObservationService(pool *pgxpool.Pool, compressor *CompressionService) *ObservationService {
+func NewObservationService(pool *pgxpool.Pool) *ObservationService {
 	return &ObservationService{
-		queries:    store.New(pool),
-		compressor: compressor,
+		queries: store.New(pool),
 	}
 }
 
@@ -99,11 +97,6 @@ func (s *ObservationService) RecordObservation(ctx context.Context, input Record
 	obs, err := s.queries.InsertObservation(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert observation: %w", err)
-	}
-
-	// Trigger async compression
-	if s.compressor != nil {
-		s.compressor.TriggerAsync(ctx, &obs)
 	}
 
 	return &obs, nil
