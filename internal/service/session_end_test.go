@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/agentmemory/agentmemory/internal/store"
+	"github.com/tmc/langchaingo/llms"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -44,6 +46,7 @@ func TestSessionEndHandler_HandleSessionEnd_ReturnsImmediately(t *testing.T) {
 		summarizer:   nil,
 		consolidator: nil,
 		reflector:    nil,
+		graphExtract: nil,
 		wg:           wg,
 		sem:          sem,
 	}
@@ -90,6 +93,7 @@ func TestSessionEndHandler_Wait_Blocks(t *testing.T) {
 		summarizer:   nil,
 		consolidator: nil,
 		reflector:    nil,
+		graphExtract: nil,
 		wg:           wg,
 		sem:          sem,
 	}
@@ -137,6 +141,7 @@ func TestSessionEndHandler_Idempotency_SpawnsPipelineOnFirstCall(t *testing.T) {
 		summarizer:   nil,
 		consolidator: nil,
 		reflector:    nil,
+		graphExtract: nil,
 		wg:           wg,
 		sem:          sem,
 	}
@@ -204,6 +209,7 @@ func TestSessionEndHandler_Idempotency_SkipsPipelineOnDuplicate(t *testing.T) {
 		summarizer:   nil,
 		consolidator: nil,
 		reflector:    nil,
+		graphExtract: nil,
 		wg:           wg,
 		sem:          sem,
 	}
@@ -243,6 +249,7 @@ func TestSessionEndHandler_PanicRecovery(t *testing.T) {
 		summarizer:   nil,
 		consolidator: nil,
 		reflector:    nil,
+		graphExtract: nil,
 		wg:           &sync.WaitGroup{},
 		sem:          semaphore.NewWeighted(20),
 	}
@@ -274,4 +281,182 @@ func TestSessionEndHandler_PanicRecovery(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Wait() did not return — panic may have blocked or the recover wrapper is missing")
 	}
+}
+
+// TestSessionEndHandler_GraphExtraction_Triggered verifies that when a
+// GraphExtractionService is provided, graph extraction runs as a fire-and-forget
+// goroutine during the pipeline and creates graph nodes from compressed observations.
+func TestSessionEndHandler_GraphExtraction_Triggered(t *testing.T) {
+	mockSvc := &mockSessionEndSessioner{
+		getSessionFunc: func(ctx context.Context, sessionID string) (*store.Session, error) {
+			return &store.Session{ID: sessionID, Status: "active"}, nil
+		},
+		endSessionFunc: func(ctx context.Context, sessionID string) (*store.Session, error) {
+			return &store.Session{ID: sessionID, Status: "ended"}, nil
+		},
+	}
+
+	// Create mock graph extraction querier with compressed observations.
+	mockQ := &mockGraphExtractionQuerier{
+		compressedObs: map[string][]store.CompressedObservation{
+			"test-session-graph": {
+				{
+					ID:             "comp-1",
+					ObservationIds: []string{"obs-1"},
+					SessionID:      "test-session-graph",
+					CompressedText: "Refactored auth module to use JWT tokens.",
+					Concepts:       []string{"auth", "JWT"},
+				},
+			},
+		},
+		nodes: make(map[string]store.GraphNode),
+		edges: make(map[string]store.GraphEdge),
+	}
+
+	// Create mock model that returns JSON entities.
+	mockL := &mockModel{
+		callFunc: func(ctx context.Context, prompt string, options ...llms.CallOption) (string, error) {
+			return `{
+				"entities": [{"type": "file", "name": "auth.ts", "properties": {"language": "typescript"}}],
+				"relationships": []
+			}`, nil
+		},
+	}
+
+	llmSvc := NewLLMServiceWithModel(mockL)
+	graphExtractSvc := newGraphExtractionServiceWithQuerier(mockQ, llmSvc)
+
+	wg := &sync.WaitGroup{}
+	sem := semaphore.NewWeighted(20)
+
+	h := &SessionEndHandler{
+		sessionSvc:   mockSvc,
+		scheduler:    nil,
+		summarizer:   nil,
+		consolidator: nil,
+		reflector:    nil,
+		graphExtract: graphExtractSvc,
+		wg:           wg,
+		sem:          sem,
+	}
+
+	// HandleSessionEnd should return immediately (pipeline runs async).
+	err := h.HandleSessionEnd(context.Background(), "test-session-graph")
+	if err != nil {
+		t.Fatalf("HandleSessionEnd returned error: %v", err)
+	}
+
+	// Wait for the pipeline goroutine to complete.
+	h.Wait()
+
+	// Poll for graph extraction to complete (fire-and-forget goroutine).
+	// The goroutine runs with mock operations that are near-instant,
+	// so a short poll is sufficient.
+	var nodesCreated bool
+	for i := 0; i < 40; i++ {
+		mockQ.mu.Lock()
+		nodesCreated = len(mockQ.nodes) > 0
+		mockQ.mu.Unlock()
+		if nodesCreated {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if !nodesCreated {
+		t.Fatal("graph extraction was not triggered — no graph nodes were created after 2 seconds")
+	}
+
+	// Verify the extracted node has the expected label.
+	mockQ.mu.Lock()
+	defer mockQ.mu.Unlock()
+
+	var labels []string
+	for _, n := range mockQ.nodes {
+		labels = append(labels, n.Label)
+		if n.Label == "auth.ts" {
+			if n.NodeType != "file" {
+				t.Errorf("expected node type 'file', got %q", n.NodeType)
+			}
+			if n.EntityID != "obs-1" {
+				t.Errorf("expected entity_id 'obs-1', got %q", n.EntityID)
+			}
+		}
+	}
+	if len(mockQ.nodes) != 1 {
+		t.Fatalf("expected exactly 1 graph node, got %d: labels=%v", len(mockQ.nodes), labels)
+	}
+}
+
+// TestSessionEndHandler_GraphExtractionFailure verifies that when graph
+// extraction fails (LLM returns error), the session-end pipeline completes
+// normally without propagating the error to HandleSessionEnd's return value.
+func TestSessionEndHandler_GraphExtractionFailure(t *testing.T) {
+	mockSvc := &mockSessionEndSessioner{
+		getSessionFunc: func(ctx context.Context, sessionID string) (*store.Session, error) {
+			return &store.Session{ID: sessionID, Status: "active"}, nil
+		},
+		endSessionFunc: func(ctx context.Context, sessionID string) (*store.Session, error) {
+			return &store.Session{ID: sessionID, Status: "ended"}, nil
+		},
+	}
+
+	mockQ := &mockGraphExtractionQuerier{
+		compressedObs: map[string][]store.CompressedObservation{
+			"session-fail": {
+				{
+					ID:             "comp-1",
+					ObservationIds: []string{"obs-1"},
+					SessionID:      "session-fail",
+					CompressedText: "Refactored auth module.",
+				},
+			},
+		},
+		nodes: make(map[string]store.GraphNode),
+		edges: make(map[string]store.GraphEdge),
+	}
+
+	// Model returns error --> graph extraction will fail
+	mockL := &mockModel{
+		callFunc: func(ctx context.Context, prompt string, options ...llms.CallOption) (string, error) {
+			return "", fmt.Errorf("LLM API rate limited")
+		},
+	}
+
+	llmSvc := NewLLMServiceWithModel(mockL)
+	graphExtractSvc := newGraphExtractionServiceWithQuerier(mockQ, llmSvc)
+
+	wg := &sync.WaitGroup{}
+	sem := semaphore.NewWeighted(20)
+
+	h := &SessionEndHandler{
+		sessionSvc:   mockSvc,
+		scheduler:    nil,
+		summarizer:   nil,
+		consolidator: nil,
+		reflector:    nil,
+		graphExtract: graphExtractSvc,
+		wg:           wg,
+		sem:          sem,
+	}
+
+	// HandleSessionEnd should return immediately with no error, even though
+	// graph extraction will fail in the fire-and-forget goroutine.
+	err := h.HandleSessionEnd(context.Background(), "session-fail")
+	if err != nil {
+		t.Fatalf("HandleSessionEnd should not propagate graph extraction error, got: %v", err)
+	}
+
+	// Wait for all pipeline goroutines to complete.
+	h.Wait()
+
+	// Verify no nodes or edges were created (graph extraction failed).
+	mockQ.mu.Lock()
+	if len(mockQ.nodes) != 0 {
+		t.Fatalf("expected 0 nodes when LLM fails, got %d", len(mockQ.nodes))
+	}
+	if len(mockQ.edges) != 0 {
+		t.Fatalf("expected 0 edges when LLM fails, got %d", len(mockQ.edges))
+	}
+	mockQ.mu.Unlock()
 }

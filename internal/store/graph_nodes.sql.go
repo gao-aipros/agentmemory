@@ -19,7 +19,7 @@ func (q *Queries) DeleteGraphNode(ctx context.Context, id string) error {
 }
 
 const getGraphNode = `-- name: GetGraphNode :one
-SELECT id, node_type, entity_id, label, metadata, created_at FROM graph_nodes WHERE id = $1
+SELECT id, node_type, entity_id, label, metadata, created_at, source_obs_ids FROM graph_nodes WHERE id = $1
 `
 
 func (q *Queries) GetGraphNode(ctx context.Context, id string) (GraphNode, error) {
@@ -32,6 +32,7 @@ func (q *Queries) GetGraphNode(ctx context.Context, id string) (GraphNode, error
 		&i.Label,
 		&i.Metadata,
 		&i.CreatedAt,
+		&i.SourceObsIds,
 	)
 	return i, err
 }
@@ -39,7 +40,7 @@ func (q *Queries) GetGraphNode(ctx context.Context, id string) (GraphNode, error
 const insertGraphNode = `-- name: InsertGraphNode :one
 INSERT INTO graph_nodes (id, node_type, entity_id, label, metadata)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, node_type, entity_id, label, metadata, created_at
+RETURNING id, node_type, entity_id, label, metadata, created_at, source_obs_ids
 `
 
 type InsertGraphNodeParams struct {
@@ -66,12 +67,13 @@ func (q *Queries) InsertGraphNode(ctx context.Context, arg InsertGraphNodeParams
 		&i.Label,
 		&i.Metadata,
 		&i.CreatedAt,
+		&i.SourceObsIds,
 	)
 	return i, err
 }
 
 const listGraphNodesByEntity = `-- name: ListGraphNodesByEntity :many
-SELECT id, node_type, entity_id, label, metadata, created_at FROM graph_nodes WHERE entity_id = $1
+SELECT id, node_type, entity_id, label, metadata, created_at, source_obs_ids FROM graph_nodes WHERE entity_id = $1
 `
 
 func (q *Queries) ListGraphNodesByEntity(ctx context.Context, entityID string) ([]GraphNode, error) {
@@ -90,6 +92,7 @@ func (q *Queries) ListGraphNodesByEntity(ctx context.Context, entityID string) (
 			&i.Label,
 			&i.Metadata,
 			&i.CreatedAt,
+			&i.SourceObsIds,
 		); err != nil {
 			return nil, err
 		}
@@ -102,7 +105,7 @@ func (q *Queries) ListGraphNodesByEntity(ctx context.Context, entityID string) (
 }
 
 const listGraphNodesByType = `-- name: ListGraphNodesByType :many
-SELECT id, node_type, entity_id, label, metadata, created_at FROM graph_nodes WHERE node_type = $1 ORDER BY created_at DESC
+SELECT id, node_type, entity_id, label, metadata, created_at, source_obs_ids FROM graph_nodes WHERE node_type = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListGraphNodesByType(ctx context.Context, nodeType string) ([]GraphNode, error) {
@@ -121,6 +124,7 @@ func (q *Queries) ListGraphNodesByType(ctx context.Context, nodeType string) ([]
 			&i.Label,
 			&i.Metadata,
 			&i.CreatedAt,
+			&i.SourceObsIds,
 		); err != nil {
 			return nil, err
 		}
@@ -130,4 +134,44 @@ func (q *Queries) ListGraphNodesByType(ctx context.Context, nodeType string) ([]
 		return nil, err
 	}
 	return items, nil
+}
+
+const upsertGraphNode = `-- name: UpsertGraphNode :one
+INSERT INTO graph_nodes (id, node_type, entity_id, label, metadata, source_obs_ids)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (label, node_type) DO UPDATE SET
+    source_obs_ids = graph_nodes.source_obs_ids || EXCLUDED.source_obs_ids,
+    metadata = EXCLUDED.metadata
+RETURNING id, node_type, entity_id, label, metadata, created_at, source_obs_ids
+`
+
+type UpsertGraphNodeParams struct {
+	ID           string
+	NodeType     string
+	EntityID     string
+	Label        string
+	Metadata     []byte
+	SourceObsIds []string
+}
+
+func (q *Queries) UpsertGraphNode(ctx context.Context, arg UpsertGraphNodeParams) (GraphNode, error) {
+	row := q.db.QueryRow(ctx, upsertGraphNode,
+		arg.ID,
+		arg.NodeType,
+		arg.EntityID,
+		arg.Label,
+		arg.Metadata,
+		arg.SourceObsIds,
+	)
+	var i GraphNode
+	err := row.Scan(
+		&i.ID,
+		&i.NodeType,
+		&i.EntityID,
+		&i.Label,
+		&i.Metadata,
+		&i.CreatedAt,
+		&i.SourceObsIds,
+	)
+	return i, err
 }

@@ -86,7 +86,9 @@ func NewServiceBundle(pool *pgxpool.Pool) *ServiceBundle {
 	// Create Scheduler for session-end immediate operations (intervals are zero —
 	// periodic tiers are configured in serve.go where a separate Scheduler is created).
 	scheduler := service.NewScheduler(pool, llmSvc, embedSvc, service.SchedulerIntervals{})
-	sessionEndH := service.NewSessionEndHandler(sessionSvc, scheduler, summarizer, consolidator, reflector, &sync.WaitGroup{}, semaphore.NewWeighted(20))
+	// graphExtract is nil by default — set GRAPH_EXTRACTION_ENABLED=true to activate.
+	var graphExtract *service.GraphExtractionService
+	sessionEndH := service.NewSessionEndHandler(sessionSvc, scheduler, summarizer, consolidator, reflector, graphExtract, &sync.WaitGroup{}, semaphore.NewWeighted(20))
 	signalSvc := service.NewSignalService(pool)
 	sentinelSvc := service.NewSentinelService(pool)
 	checkpointSvc := service.NewCheckpointService(pool)
