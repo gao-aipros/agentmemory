@@ -430,11 +430,11 @@ func TestMCP_PipelineE2E(t *testing.T) {
 	t.Run("SessionEnd_CompressionAndSummarization", func(t *testing.T) {
 		// Use REST POST /v1/api/session/end to trigger the session-end handler.
 		// This asynchronously runs CompressSessionNow + SummarizeSessionNow (isFull=true).
-		status, _, err := restDo("POST", "/v1/api/session/end", map[string]any{
+		resp, _, err := restDo("POST", "/v1/api/session/end", map[string]any{
 			"session_id": sessionID,
 		}, apiKey)
 		require.NoError(t, err, "session end request")
-		require.Equal(t, 200, status, "session end HTTP 200")
+		require.Equal(t, 200, resp.StatusCode, "session end HTTP 200")
 
 		// Wait for compression (Tier 0 -- happens asynchronously in runPipeline goroutine)
 		pollDB(t, pool,
@@ -460,6 +460,11 @@ func TestMCP_PipelineE2E(t *testing.T) {
 		} else {
 			t.Logf("Embeddings: %d", embCount)
 		}
+
+		// Wait for summarization (Tier 1 -- also asynchronous)
+		pollDB(t, pool,
+			fmt.Sprintf("SELECT COUNT(*) FROM session_summaries WHERE session_id = '%s'", sessionID),
+			1, 60*time.Second)
 
 		// Verify session-end summary created with is_full=true
 		// (session-end sets isFull=true, mid-scheduler sets isFull=false)
