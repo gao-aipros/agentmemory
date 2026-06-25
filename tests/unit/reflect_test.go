@@ -1,7 +1,6 @@
 package unit
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/agentmemory/agentmemory/internal/service"
@@ -55,72 +54,24 @@ func TestGroupMemoriesByConcept_NoSharedConcepts(t *testing.T) {
 	assert.Equal(t, 3, len(clusters), "memories with no shared concepts should each be their own cluster")
 }
 
-func TestDetectPatterns_ReturnsPatterns(t *testing.T) {
-	cluster := service.MemoryCluster{
-		Memories: []service.MemoryForReflection{
-			{ID: "m1", Content: "Test A passed", Concepts: []string{"testing", "unit"}},
-			{ID: "m2", Content: "Test B also passed", Concepts: []string{"testing", "integration"}},
-		},
+func TestGroupMemoriesByConcept_SingleMemory(t *testing.T) {
+	memories := []service.MemoryForReflection{
+		{ID: "m1", Content: "A single memory", Concepts: []string{"alpha"}},
 	}
 
-	patterns := service.DetectPatterns(cluster)
-	assert.NotEmpty(t, patterns, "should detect at least one pattern")
-	// Patterns should mention shared concepts
-	foundTesting := false
-	for _, p := range patterns {
-		if containsIgnoreCase(p.Pattern, "test") {
-			foundTesting = true
-			break
-		}
-	}
-	assert.True(t, foundTesting, "detected patterns should reference shared concepts")
+	clusters := service.GroupMemoriesByConcept(memories)
+	assert.Equal(t, 1, len(clusters), "single memory should produce one cluster")
+	assert.Equal(t, 1, len(clusters[0].Memories), "cluster should contain one memory")
+	assert.Equal(t, "m1", clusters[0].Memories[0].ID)
 }
 
-func TestDetectPatterns_EmptyCluster(t *testing.T) {
-	cluster := service.MemoryCluster{
-		Memories: []service.MemoryForReflection{},
+func TestGroupMemoriesByConcept_NoConcepts(t *testing.T) {
+	memories := []service.MemoryForReflection{
+		{ID: "m1", Content: "Memory without concepts 1"},
+		{ID: "m2", Content: "Memory without concepts 2"},
 	}
 
-	patterns := service.DetectPatterns(cluster)
-	assert.Empty(t, patterns, "empty cluster should produce no patterns")
-}
-
-func TestDetectPatterns_SingleMemory(t *testing.T) {
-	cluster := service.MemoryCluster{
-		Memories: []service.MemoryForReflection{
-			{ID: "m1", Content: "Single memory", Concepts: []string{"solo"}},
-		},
-	}
-
-	patterns := service.DetectPatterns(cluster)
-	assert.Empty(t, patterns, "single memory should not produce patterns")
-}
-
-func TestSynthesizeInsight_ProducesLowConfidence(t *testing.T) {
-	patterns := []service.DetectedPattern{
-		{Pattern: "Frequent use of pgvector for embedding storage", Frequency: 5},
-		{Pattern: "Recurring need for connection pool tuning", Frequency: 3},
-	}
-
-	insights := service.SynthesizeInsights(patterns)
-	assert.NotEmpty(t, insights, "should synthesize at least one insight")
-
-	for _, insight := range insights {
-		assert.LessOrEqual(t, insight.Confidence, 0.5,
-			"synthesized insights should have low confidence (<= 0.5)")
-		assert.NotEmpty(t, insight.Content, "insight content should not be empty")
-	}
-}
-
-func TestSynthesizeInsight_EmptyPatterns(t *testing.T) {
-	insights := service.SynthesizeInsights(nil)
-	assert.Empty(t, insights)
-
-	insights = service.SynthesizeInsights([]service.DetectedPattern{})
-	assert.Empty(t, insights)
-}
-
-// containsIgnoreCase is a case-insensitive substring check using the standard library.
-func containsIgnoreCase(s, substr string) bool {
-	return len(s) >= len(substr) && strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+	clusters := service.GroupMemoriesByConcept(memories)
+	// Memories with no shared concepts cannot be grouped together.
+	assert.Equal(t, 2, len(clusters), "memories without concepts should each be their own cluster")
 }

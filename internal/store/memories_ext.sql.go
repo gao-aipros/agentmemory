@@ -22,7 +22,7 @@ type BatchInsertMemoriesParams struct {
 }
 
 const listAllMemories = `-- name: ListAllMemories :many
-SELECT id, owner_type, owner_user_id, owner_team_id, visibility, content, concepts, source, confidence, created_at FROM memories ORDER BY created_at DESC LIMIT $1
+SELECT id, owner_type, owner_user_id, owner_team_id, visibility, content, concepts, source, confidence, created_at, deleted, reflected FROM memories WHERE reflected = false AND deleted = false ORDER BY created_at DESC LIMIT $1
 `
 
 func (q *Queries) ListAllMemories(ctx context.Context, limit int32) ([]Memory, error) {
@@ -45,6 +45,8 @@ func (q *Queries) ListAllMemories(ctx context.Context, limit int32) ([]Memory, e
 			&i.Source,
 			&i.Confidence,
 			&i.CreatedAt,
+			&i.Deleted,
+			&i.Reflected,
 		); err != nil {
 			return nil, err
 		}

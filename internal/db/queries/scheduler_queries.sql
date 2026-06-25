@@ -26,8 +26,5 @@ WHERE NOT EXISTS (
 );
 
 -- name: HasUnreflectedMemories :one
-SELECT COUNT(*) > 0 AS has_unreflected FROM memories m
-WHERE NOT EXISTS (
-    SELECT 1 FROM insights i
-    WHERE i.source = 'reflect' AND i.created_at > m.created_at
-);
+SELECT COUNT(*) > 0 AS has_unreflected FROM memories
+WHERE reflected = false AND deleted = false;

@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/agentmemory/agentmemory/internal/store"
+	"github.com/stretchr/testify/assert"
 	"github.com/tmc/langchaingo/llms"
 )
 
@@ -36,20 +38,47 @@ func (m *mockModel) GenerateContent(ctx context.Context, messages []llms.Message
 	return nil, nil
 }
 
-// TestSummarizeSession_EmptyLLMResponse verifies that empty responses from the
-// LLM are gracefully skipped rather than silently appended to the summary.
 // mockReflectionQuerier implements reflectionQuerier for testing.
 type mockReflectionQuerier struct {
-	listMemories  func(ctx context.Context, limit int32) ([]store.Memory, error)
-	insertInsight func(ctx context.Context, params store.InsertInsightParams) error
+	listMemories          func(ctx context.Context, limit int32) ([]store.Memory, error)
+	upsertInsight         func(ctx context.Context, params store.UpsertInsightParams) error
+	markMemoriesReflected func(ctx context.Context, ids []string) error
+	applyDecayWithCounts func(ctx context.Context, weeksSince float64) (store.ApplyDecayWithCountsRow, error)
+	listInsights          func(ctx context.Context, arg store.ListInsightsParams) ([]store.ListInsightsRow, error)
+	searchInsights        func(ctx context.Context, arg store.SearchInsightsParams) ([]store.SearchInsightsRow, error)
 }
 
 func (m *mockReflectionQuerier) ListAllMemories(ctx context.Context, limit int32) ([]store.Memory, error) {
 	return m.listMemories(ctx, limit)
 }
 
-func (m *mockReflectionQuerier) InsertInsight(ctx context.Context, params store.InsertInsightParams) error {
-	return m.insertInsight(ctx, params)
+func (m *mockReflectionQuerier) UpsertInsight(ctx context.Context, params store.UpsertInsightParams) error {
+	return m.upsertInsight(ctx, params)
+}
+
+func (m *mockReflectionQuerier) MarkMemoriesReflected(ctx context.Context, ids []string) error {
+	return m.markMemoriesReflected(ctx, ids)
+}
+
+func (m *mockReflectionQuerier) ApplyDecayWithCounts(ctx context.Context, weeksSince float64) (store.ApplyDecayWithCountsRow, error) {
+	if m.applyDecayWithCounts == nil {
+		return store.ApplyDecayWithCountsRow{}, nil
+	}
+	return m.applyDecayWithCounts(ctx, weeksSince)
+}
+
+func (m *mockReflectionQuerier) ListInsights(ctx context.Context, arg store.ListInsightsParams) ([]store.ListInsightsRow, error) {
+	if m.listInsights == nil {
+		return nil, nil
+	}
+	return m.listInsights(ctx, arg)
+}
+
+func (m *mockReflectionQuerier) SearchInsights(ctx context.Context, arg store.SearchInsightsParams) ([]store.SearchInsightsRow, error) {
+	if m.searchInsights == nil {
+		return nil, nil
+	}
+	return m.searchInsights(ctx, arg)
 }
 
 // TestReflectionService_RunReflection_NoMemories verifies that RunReflection
@@ -61,13 +90,24 @@ func TestReflectionService_RunReflection_NoMemories(t *testing.T) {
 		listMemories: func(ctx context.Context, limit int32) ([]store.Memory, error) {
 			return nil, nil
 		},
-		insertInsight: func(ctx context.Context, params store.InsertInsightParams) error {
+		upsertInsight: func(ctx context.Context, params store.UpsertInsightParams) error {
 			t.Error("insertInsight should not be called when there are no memories")
+			return nil
+		},
+		markMemoriesReflected: func(ctx context.Context, ids []string) error {
+			t.Error("MarkMemoriesReflected should not be called when there are no memories")
 			return nil
 		},
 	}
 
-	svc := newReflectionServiceWithQuerier(mockQ)
+	mockLLM := &mockReflectionLLM{
+		callFunc: func(ctx context.Context, prompt string) (string, error) {
+			t.Error("LLM should not be called when there are no memories")
+			return "", nil
+		},
+	}
+
+	svc := newReflectionServiceWithQuerier(mockQ, mockLLM)
 	err := svc.RunReflection(ctx, "", 10)
 	if err != nil {
 		t.Fatalf("RunReflection should not error with empty memories, got: %v", err)
@@ -75,14 +115,11 @@ func TestReflectionService_RunReflection_NoMemories(t *testing.T) {
 }
 
 // TestReflectionService_RunReflection_WithMemories verifies that RunReflection
-// produces insights from memories with shared concepts.
+// produces insights from memories with shared concepts via the LLM.
 func TestReflectionService_RunReflection_WithMemories(t *testing.T) {
 	ctx := context.Background()
 
-	var capturedInsights []struct {
-		content    string
-		confidence float64
-	}
+	var capturedInsights []store.UpsertInsightParams
 
 	mockQ := &mockReflectionQuerier{
 		listMemories: func(ctx context.Context, limit int32) ([]store.Memory, error) {
@@ -92,30 +129,189 @@ func TestReflectionService_RunReflection_WithMemories(t *testing.T) {
 				{ID: "3", Content: "Third memory about auth", Concepts: []string{"auth", "security"}},
 			}, nil
 		},
-		insertInsight: func(ctx context.Context, params store.InsertInsightParams) error {
-			capturedInsights = append(capturedInsights, struct {
-				content    string
-				confidence float64
-			}{params.Content, params.Confidence})
+		upsertInsight: func(ctx context.Context, params store.UpsertInsightParams) error {
+			capturedInsights = append(capturedInsights, params)
+			return nil
+		},
+		markMemoriesReflected: func(ctx context.Context, ids []string) error {
 			return nil
 		},
 	}
 
-	svc := newReflectionServiceWithQuerier(mockQ)
+	mockLLM := &mockReflectionLLM{
+		callFunc: func(ctx context.Context, prompt string) (string, error) {
+			return `<insights>
+	<insight confidence="0.8" title="Auth Pattern">Authentication patterns show consistent login flows.</insight>
+	</insights>`, nil
+		},
+	}
+
+	svc := newReflectionServiceWithQuerier(mockQ, mockLLM)
 	err := svc.RunReflection(ctx, "", 10)
 	if err != nil {
 		t.Fatalf("RunReflection should not error with memories, got: %v", err)
 	}
 
-	// All 3 memories share "auth", forming 1 cluster, which produces patterns
-	// for "auth" (freq=3) and "login" (freq=2), yielding 2 insights at confidence 0.3.
-	if len(capturedInsights) == 0 {
-		t.Fatal("expected at least one insight from 3 memories sharing concepts, got 0")
+	// Should produce exactly 1 insight (from the mock LLM response)
+	if len(capturedInsights) != 1 {
+		t.Fatalf("expected 1 insight from mock LLM, got %d", len(capturedInsights))
 	}
-	for _, in := range capturedInsights {
-		if in.confidence != 0.3 {
-			t.Errorf("expected confidence 0.3 for reflection insights, got %f", in.confidence)
-		}
+	assert.Equal(t, "Auth Pattern", capturedInsights[0].Title)
+	assert.InDelta(t, 0.8, capturedInsights[0].Confidence, 1e-6)
+	assert.Contains(t, capturedInsights[0].Content, "Authentication patterns")
+	assert.Contains(t, capturedInsights[0].SourceConceptCluster, "auth")
+}
+
+// TestRunReflection_AllClustersFail verifies that RunReflection returns a non-nil
+// error when every cluster's LLM call fails (Rule 12: no silent passes).
+func TestRunReflection_AllClustersFail(t *testing.T) {
+	ctx := context.Background()
+
+	llmCallCount := 0
+	mockQ := &mockReflectionQuerier{
+		listMemories: func(ctx context.Context, limit int32) ([]store.Memory, error) {
+			return []store.Memory{
+				{ID: "1", Content: "Memory about auth", Concepts: []string{"alpha"}},
+				{ID: "2", Content: "Memory about auth", Concepts: []string{"alpha"}},
+				{ID: "3", Content: "Memory about auth", Concepts: []string{"alpha"}},
+				{ID: "4", Content: "Memory about caching", Concepts: []string{"beta"}},
+				{ID: "5", Content: "Memory about caching", Concepts: []string{"beta"}},
+				{ID: "6", Content: "Memory about caching", Concepts: []string{"beta"}},
+			}, nil
+		},
+		upsertInsight: func(ctx context.Context, params store.UpsertInsightParams) error {
+			t.Error("UpsertInsight should not be called when all LLM calls fail")
+			return nil
+		},
+		markMemoriesReflected: func(ctx context.Context, ids []string) error {
+			t.Error("MarkMemoriesReflected should not be called when all clusters fail")
+			return nil
+		},
+	}
+
+	mockLLM := &mockReflectionLLM{
+		callFunc: func(ctx context.Context, prompt string) (string, error) {
+			llmCallCount++
+			return "", fmt.Errorf("LLM reflection failed")
+		},
+	}
+
+	svc := newReflectionServiceWithQuerier(mockQ, mockLLM)
+	err := svc.RunReflection(ctx, "", 10)
+
+	if err == nil {
+		t.Fatal("RunReflection should return error when all clusters fail")
+	}
+	if !strings.Contains(err.Error(), "all 2 reflection clusters failed") {
+		t.Fatalf("expected error to mention all clusters failed, got: %v", err)
+	}
+	if llmCallCount != 2 {
+		t.Fatalf("expected 2 LLM calls (one per cluster), got %d", llmCallCount)
+	}
+}
+
+// TestRunReflection_PartialFailure verifies that RunReflection does NOT return
+// an error when some clusters fail but at least one succeeds.
+func TestRunReflection_PartialFailure(t *testing.T) {
+	ctx := context.Background()
+
+	var capturedInsights []store.UpsertInsightParams
+	llmCallCount := 0
+
+	mockQ := &mockReflectionQuerier{
+		listMemories: func(ctx context.Context, limit int32) ([]store.Memory, error) {
+			return []store.Memory{
+				{ID: "1", Content: "Memory about auth", Concepts: []string{"alpha"}},
+				{ID: "2", Content: "Memory about auth", Concepts: []string{"alpha"}},
+				{ID: "3", Content: "Memory about auth", Concepts: []string{"alpha"}},
+				{ID: "4", Content: "Memory about caching", Concepts: []string{"beta"}},
+				{ID: "5", Content: "Memory about caching", Concepts: []string{"beta"}},
+				{ID: "6", Content: "Memory about caching", Concepts: []string{"beta"}},
+			}, nil
+		},
+		upsertInsight: func(ctx context.Context, params store.UpsertInsightParams) error {
+			capturedInsights = append(capturedInsights, params)
+			return nil
+		},
+		markMemoriesReflected: func(ctx context.Context, ids []string) error {
+			return nil
+		},
+	}
+
+	mockLLM := &mockReflectionLLM{
+		callFunc: func(ctx context.Context, prompt string) (string, error) {
+			llmCallCount++
+			if llmCallCount == 1 {
+				return "", fmt.Errorf("LLM reflection failed")
+			}
+			return cannedXMLResponse, nil
+		},
+	}
+
+	svc := newReflectionServiceWithQuerier(mockQ, mockLLM)
+	err := svc.RunReflection(ctx, "", 10)
+
+	if err != nil {
+		t.Fatalf("RunReflection should not error with partial failure, got: %v", err)
+	}
+	if llmCallCount != 2 {
+		t.Fatalf("expected 2 LLM calls, got %d", llmCallCount)
+	}
+	if len(capturedInsights) == 0 {
+		t.Fatal("expected insights from the successful cluster")
+	}
+}
+
+// TestRunReflection_AllPersistFail verifies that RunReflection returns a non-nil
+// error when all UpsertInsight calls fail, even if LLM succeeds.
+func TestRunReflection_AllPersistFail(t *testing.T) {
+	ctx := context.Background()
+
+	llmCallCount := 0
+	upsertCallCount := 0
+
+	mockQ := &mockReflectionQuerier{
+		listMemories: func(ctx context.Context, limit int32) ([]store.Memory, error) {
+			return []store.Memory{
+				{ID: "1", Content: "Memory about auth", Concepts: []string{"alpha"}},
+				{ID: "2", Content: "Memory about auth", Concepts: []string{"alpha"}},
+				{ID: "3", Content: "Memory about auth", Concepts: []string{"alpha"}},
+				{ID: "4", Content: "Memory about caching", Concepts: []string{"beta"}},
+				{ID: "5", Content: "Memory about caching", Concepts: []string{"beta"}},
+				{ID: "6", Content: "Memory about caching", Concepts: []string{"beta"}},
+			}, nil
+		},
+		upsertInsight: func(ctx context.Context, params store.UpsertInsightParams) error {
+			upsertCallCount++
+			return fmt.Errorf("db failure")
+		},
+		markMemoriesReflected: func(ctx context.Context, ids []string) error {
+			t.Error("MarkMemoriesReflected should not be called when no insights are persisted")
+			return nil
+		},
+	}
+
+	mockLLM := &mockReflectionLLM{
+		callFunc: func(ctx context.Context, prompt string) (string, error) {
+			llmCallCount++
+			return cannedXMLResponse, nil
+		},
+	}
+
+	svc := newReflectionServiceWithQuerier(mockQ, mockLLM)
+	err := svc.RunReflection(ctx, "", 10)
+
+	if err == nil {
+		t.Fatal("RunReflection should return error when all persist attempts fail")
+	}
+	if !strings.Contains(err.Error(), "all 2 reflection clusters failed") {
+		t.Fatalf("expected error to mention all clusters failed, got: %v", err)
+	}
+	if llmCallCount != 2 {
+		t.Fatalf("expected 2 LLM calls, got %d", llmCallCount)
+	}
+	if upsertCallCount == 0 {
+		t.Fatal("expected UpsertInsight to be called")
 	}
 }
 

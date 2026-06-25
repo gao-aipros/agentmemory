@@ -68,11 +68,22 @@ type GraphNode struct {
 }
 
 type Insight struct {
-	ID         string
-	Content    string
-	Confidence float64
-	Source     string
-	CreatedAt  pgtype.Timestamptz
+	ID                   string
+	Title                string
+	Content              string
+	Confidence           float64
+	ReinforcementCount   int32
+	SourceConceptCluster []string
+	SourceMemoryIds      []string
+	SourceLessonIds      []string
+	Project              *string
+	Tags                 []string
+	DecayRate            float64
+	LastReinforcedAt     pgtype.Timestamptz
+	LastDecayedAt        pgtype.Timestamptz
+	Deleted              bool
+	CreatedAt            pgtype.Timestamptz
+	UpdatedAt            pgtype.Timestamptz
 }
 
 type Lesson struct {
@@ -107,6 +118,8 @@ type Memory struct {
 	Source      string
 	Confidence  float64
 	CreatedAt   pgtype.Timestamptz
+	Deleted     bool
+	Reflected   bool
 }
 
 type Observation struct {

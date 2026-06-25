@@ -7,20 +7,219 @@ package store
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const insertInsight = `-- name: InsertInsight :exec
-INSERT INTO insights (id, content, confidence, source, created_at)
-VALUES ($1, $2, $3, 'reflect', now())
+const applyDecayWithCounts = `-- name: ApplyDecayWithCounts :one
+WITH decayed AS (
+    UPDATE insights SET
+        confidence = GREATEST(0.05, confidence - decay_rate * $1::float),
+        last_decayed_at = now(),
+        deleted = CASE
+            WHEN confidence - decay_rate * $1::float <= 0.1 AND reinforcement_count = 0
+            THEN true ELSE deleted
+        END,
+        updated_at = now()
+    WHERE deleted = false
+      AND (
+        last_reinforced_at IS NULL
+        OR last_reinforced_at < now() - INTERVAL '1 week'
+      )
+    RETURNING id, deleted
+)
+SELECT
+    COUNT(*) FILTER (WHERE NOT deleted)::int AS decayed_count,
+    COUNT(*) FILTER (WHERE deleted)::int AS soft_deleted_count
+FROM decayed
 `
 
-type InsertInsightParams struct {
-	ID         string
-	Content    string
-	Confidence float64
+type ApplyDecayWithCountsRow struct {
+	DecayedCount     int32
+	SoftDeletedCount int32
 }
 
-func (q *Queries) InsertInsight(ctx context.Context, arg InsertInsightParams) error {
-	_, err := q.db.Exec(ctx, insertInsight, arg.ID, arg.Content, arg.Confidence)
+func (q *Queries) ApplyDecayWithCounts(ctx context.Context, dollar_1 float64) (ApplyDecayWithCountsRow, error) {
+	row := q.db.QueryRow(ctx, applyDecayWithCounts, dollar_1)
+	var i ApplyDecayWithCountsRow
+	err := row.Scan(&i.DecayedCount, &i.SoftDeletedCount)
+	return i, err
+}
+
+const listInsights = `-- name: ListInsights :many
+SELECT id, title, content, confidence, reinforcement_count, project, tags, created_at, updated_at
+FROM insights
+WHERE deleted = false
+  AND ($2::text IS NULL OR project = $2)
+  AND ($3::float IS NULL OR confidence >= $3::float)
+ORDER BY confidence DESC
+LIMIT $1
+`
+
+type ListInsightsParams struct {
+	Limit         int32
+	Project       *string
+	MinConfidence *float64
+}
+
+type ListInsightsRow struct {
+	ID                 string
+	Title              string
+	Content            string
+	Confidence         float64
+	ReinforcementCount int32
+	Project            *string
+	Tags               []string
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+}
+
+func (q *Queries) ListInsights(ctx context.Context, arg ListInsightsParams) ([]ListInsightsRow, error) {
+	rows, err := q.db.Query(ctx, listInsights, arg.Limit, arg.Project, arg.MinConfidence)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListInsightsRow
+	for rows.Next() {
+		var i ListInsightsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Content,
+			&i.Confidence,
+			&i.ReinforcementCount,
+			&i.Project,
+			&i.Tags,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markMemoriesReflected = `-- name: MarkMemoriesReflected :exec
+UPDATE memories SET reflected = true, updated_at = now()
+WHERE id = ANY($1::text[])
+`
+
+func (q *Queries) MarkMemoriesReflected(ctx context.Context, dollar_1 []string) error {
+	_, err := q.db.Exec(ctx, markMemoriesReflected, dollar_1)
+	return err
+}
+
+const searchInsights = `-- name: SearchInsights :many
+SELECT id, title, content, confidence, reinforcement_count, project, tags, created_at, updated_at
+FROM insights
+WHERE deleted = false
+  AND ($2::text IS NULL OR project = $2)
+  AND ($3::float IS NULL OR confidence >= $3::float)
+  AND ($4::text IS NULL OR to_tsvector('english', title || ' ' || content) @@ plainto_tsquery('english', $4))
+ORDER BY confidence DESC, ts_rank(to_tsvector('english', title || ' ' || content), plainto_tsquery('english', $4)) DESC
+LIMIT $1
+`
+
+type SearchInsightsParams struct {
+	Limit         int32
+	Project       *string
+	MinConfidence *float64
+	Query         *string
+}
+
+type SearchInsightsRow struct {
+	ID                 string
+	Title              string
+	Content            string
+	Confidence         float64
+	ReinforcementCount int32
+	Project            *string
+	Tags               []string
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+}
+
+func (q *Queries) SearchInsights(ctx context.Context, arg SearchInsightsParams) ([]SearchInsightsRow, error) {
+	rows, err := q.db.Query(ctx, searchInsights,
+		arg.Limit,
+		arg.Project,
+		arg.MinConfidence,
+		arg.Query,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchInsightsRow
+	for rows.Next() {
+		var i SearchInsightsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Content,
+			&i.Confidence,
+			&i.ReinforcementCount,
+			&i.Project,
+			&i.Tags,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const upsertInsight = `-- name: UpsertInsight :exec
+INSERT INTO insights (id, title, content, confidence, source_concept_cluster,
+    source_memory_ids, source_lesson_ids, project, tags, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now(), now())
+ON CONFLICT (id) DO UPDATE SET
+    deleted = false,
+    confidence = LEAST(1.0, insights.confidence + (1.0 - insights.confidence) * 0.10),
+    reinforcement_count = insights.reinforcement_count + 1,
+    last_reinforced_at = now(),
+    title = EXCLUDED.title,
+    content = EXCLUDED.content,
+    source_concept_cluster = EXCLUDED.source_concept_cluster,
+    source_memory_ids = EXCLUDED.source_memory_ids,
+    source_lesson_ids = EXCLUDED.source_lesson_ids,
+    tags = EXCLUDED.tags,
+    updated_at = now()
+`
+
+type UpsertInsightParams struct {
+	ID                   string
+	Title                string
+	Content              string
+	Confidence           float64
+	SourceConceptCluster []string
+	SourceMemoryIds      []string
+	SourceLessonIds      []string
+	Project              *string
+	Tags                 []string
+}
+
+func (q *Queries) UpsertInsight(ctx context.Context, arg UpsertInsightParams) error {
+	_, err := q.db.Exec(ctx, upsertInsight,
+		arg.ID,
+		arg.Title,
+		arg.Content,
+		arg.Confidence,
+		arg.SourceConceptCluster,
+		arg.SourceMemoryIds,
+		arg.SourceLessonIds,
+		arg.Project,
+		arg.Tags,
+	)
 	return err
 }

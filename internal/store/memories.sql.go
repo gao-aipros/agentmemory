@@ -19,7 +19,7 @@ func (q *Queries) DeleteMemory(ctx context.Context, id string) error {
 }
 
 const getMemory = `-- name: GetMemory :one
-SELECT id, owner_type, owner_user_id, owner_team_id, visibility, content, concepts, source, confidence, created_at FROM memories WHERE id = $1
+SELECT id, owner_type, owner_user_id, owner_team_id, visibility, content, concepts, source, confidence, created_at, deleted, reflected FROM memories WHERE id = $1
 `
 
 func (q *Queries) GetMemory(ctx context.Context, id string) (Memory, error) {
@@ -36,6 +36,8 @@ func (q *Queries) GetMemory(ctx context.Context, id string) (Memory, error) {
 		&i.Source,
 		&i.Confidence,
 		&i.CreatedAt,
+		&i.Deleted,
+		&i.Reflected,
 	)
 	return i, err
 }
@@ -43,7 +45,7 @@ func (q *Queries) GetMemory(ctx context.Context, id string) (Memory, error) {
 const insertMemory = `-- name: InsertMemory :one
 INSERT INTO memories (id, owner_type, owner_user_id, owner_team_id, visibility, content, concepts, source, confidence)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, owner_type, owner_user_id, owner_team_id, visibility, content, concepts, source, confidence, created_at
+RETURNING id, owner_type, owner_user_id, owner_team_id, visibility, content, concepts, source, confidence, created_at, deleted, reflected
 `
 
 type InsertMemoryParams struct {
@@ -82,12 +84,14 @@ func (q *Queries) InsertMemory(ctx context.Context, arg InsertMemoryParams) (Mem
 		&i.Source,
 		&i.Confidence,
 		&i.CreatedAt,
+		&i.Deleted,
+		&i.Reflected,
 	)
 	return i, err
 }
 
 const listMemoriesByOwner = `-- name: ListMemoriesByOwner :many
-SELECT id, owner_type, owner_user_id, owner_team_id, visibility, content, concepts, source, confidence, created_at FROM memories WHERE owner_user_id = $1 ORDER BY created_at DESC LIMIT $2
+SELECT id, owner_type, owner_user_id, owner_team_id, visibility, content, concepts, source, confidence, created_at, deleted, reflected FROM memories WHERE owner_user_id = $1 ORDER BY created_at DESC LIMIT $2
 `
 
 type ListMemoriesByOwnerParams struct {
@@ -115,6 +119,8 @@ func (q *Queries) ListMemoriesByOwner(ctx context.Context, arg ListMemoriesByOwn
 			&i.Source,
 			&i.Confidence,
 			&i.CreatedAt,
+			&i.Deleted,
+			&i.Reflected,
 		); err != nil {
 			return nil, err
 		}
