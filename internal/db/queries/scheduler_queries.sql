@@ -4,7 +4,7 @@ WHERE compressed_at IS NULL AND session_id IS NOT NULL
 ORDER BY session_id;
 
 -- name: ClaimUncompressedObservations :many
-SELECT id, title, narrative, facts, concepts, session_id, owner_type, owner_user_id, owner_team_id, visibility
+SELECT id, title, narrative, type, files, facts, concepts, session_id, owner_type, owner_user_id, owner_team_id, visibility
 FROM observations
 WHERE session_id = $1 AND compressed_at IS NULL
 ORDER BY created_at

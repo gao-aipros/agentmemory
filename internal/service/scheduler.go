@@ -173,14 +173,26 @@ func (s *Scheduler) compressSession(ctx context.Context, sessionID string) error
 	// Build batch prompt and call LLM
 	prompt := BuildBatchCompressionPrompt(compObs)
 	response, err := s.llm.Call(ctx, prompt)
-	if err != nil {
-		return fmt.Errorf("batch LLM call failed: %w", err)
+
+	var results []CompressionResult
+	if err == nil {
+		// Parse response
+		results, err = ParseBatchCompressionResponse(response, len(obs))
 	}
 
-	// Parse response
-	results, err := ParseBatchCompressionResponse(response, len(obs))
 	if err != nil {
-		return fmt.Errorf("failed to parse batch LLM response: %w", err)
+		slog.Warn("LLM compression failed, falling back to synthetic compression",
+			"session_id", sessionID,
+			"error", err,
+		)
+		results = make([]CompressionResult, len(obs))
+		for i, o := range obs {
+			sr := BuildSyntheticCompression(o.Title, o.Narrative, o.Title, o.Type, "", o.Files)
+			results[i] = CompressionResult{
+				CompressedText: sr.CompressedText,
+				Concepts:       sr.Concepts,
+			}
+		}
 	}
 
 	// Build batch insert params — use min(len(obs), len(results))
