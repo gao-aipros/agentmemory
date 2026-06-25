@@ -96,6 +96,8 @@ func TestRunReflection_CreatesInsights(t *testing.T) {
 		callFunc: func(ctx context.Context, prompt string) (string, error) {
 			llmCalled = true
 			assert.Contains(t, prompt, "database")
+			assert.Contains(t, prompt, "You are a higher-order reasoning engine",
+				"prompt should include REFLECT_SYSTEM content")
 			assert.Contains(t, prompt, "performance")
 			// resilience and retry belong to the 2-memory cluster, should not appear
 			return cannedXMLResponse, nil
@@ -489,4 +491,40 @@ func TestSearchInsights_MatchesContent(t *testing.T) {
 	require.Len(t, insights, 1)
 	assert.Equal(t, "Retry Logic", insights[0].Title)
 	assert.Contains(t, insights[0].Content, "timeout")
+}
+
+// TestRunReflection_NoInsights_DoesNotMarkReflected verifies that when the LLM
+// returns zero valid insights (e.g., empty <insights> block), MarkMemoriesReflected
+// is NOT called — memories should not be marked reflected if nothing was persisted.
+func TestRunReflection_NoInsights_DoesNotMarkReflected(t *testing.T) {
+	ctx := context.Background()
+
+	mockQ := &mockReflectionQuerier{
+		listMemories: func(ctx context.Context, limit int32) ([]store.Memory, error) {
+			return []store.Memory{
+				{ID: "n1", Content: "First memory", Concepts: []string{"alpha"}},
+				{ID: "n2", Content: "Second memory", Concepts: []string{"alpha"}},
+				{ID: "n3", Content: "Third memory", Concepts: []string{"alpha"}},
+			}, nil
+		},
+		upsertInsight: func(ctx context.Context, params store.UpsertInsightParams) error {
+			t.Error("UpsertInsight should not be called when LLM returns zero valid insights")
+			return nil
+		},
+		markMemoriesReflected: func(ctx context.Context, ids []string) error {
+			t.Error("MarkMemoriesReflected should not be called when zero insights were persisted")
+			return nil
+		},
+	}
+
+	mockLLM := &mockReflectionLLM{
+		callFunc: func(ctx context.Context, prompt string) (string, error) {
+			// Return valid XML wrapper but no <insight> blocks — zero insights
+			return "<insights>\n</insights>", nil
+		},
+	}
+
+	svc := newReflectionServiceWithQuerier(mockQ, mockLLM)
+	err := svc.RunReflection(ctx, "", 10)
+	assert.NoError(t, err)
 }

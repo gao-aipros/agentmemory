@@ -118,6 +118,7 @@ type Memory struct {
 	Source      string
 	Confidence  float64
 	CreatedAt   pgtype.Timestamptz
+	Deleted     bool
 	Reflected   bool
 }
 

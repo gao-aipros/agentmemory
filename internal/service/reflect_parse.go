@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	insightBlockRe   = regexp.MustCompile(`<insight\s+(.*?)>(.*?)</insight>`)
+	insightBlockRe   = regexp.MustCompile(`(?s)<insight\s+(.*?)>(.*?)</insight>`)
 	confidenceAttrRe = regexp.MustCompile(`confidence="([^"]*)"`)
 	titleAttrRe      = regexp.MustCompile(`title="([^"]*)"`)
 )

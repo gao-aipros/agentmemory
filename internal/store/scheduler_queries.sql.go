@@ -66,11 +66,8 @@ func (q *Queries) ClaimUncompressedObservations(ctx context.Context, sessionID s
 }
 
 const hasUnreflectedMemories = `-- name: HasUnreflectedMemories :one
-SELECT COUNT(*) > 0 AS has_unreflected FROM memories m
-WHERE NOT EXISTS (
-    SELECT 1 FROM insights i
-    WHERE i.source = 'reflect' AND i.created_at > m.created_at
-)
+SELECT COUNT(*) > 0 AS has_unreflected FROM memories
+WHERE reflected = false AND deleted = false
 `
 
 func (q *Queries) HasUnreflectedMemories(ctx context.Context) (bool, error) {

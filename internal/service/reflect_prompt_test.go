@@ -124,6 +124,26 @@ func TestBuildReflectPrompt_EmptyCluster(t *testing.T) {
 	}
 }
 
+// TestBuildReflectPrompt_IncludesSystemPrompt verifies that BuildReflectPrompt
+// prepends the REFLECT_SYSTEM content as a system header, so it is passed
+// to the LLM in the single prompt string.
+func TestBuildReflectPrompt_IncludesSystemPrompt(t *testing.T) {
+	cluster := ReflectCluster{
+		Concepts: []string{"patterns", "testing"},
+	}
+	prompt := BuildReflectPrompt(cluster)
+
+	if !strings.Contains(prompt, "You are a higher-order reasoning engine") {
+		t.Error("BuildReflectPrompt output should contain REFLECT_SYSTEM content")
+	}
+	if !strings.Contains(prompt, "<insights>") {
+		t.Error("BuildReflectPrompt output should contain REFLECT_SYSTEM XML tags")
+	}
+	if !strings.Contains(prompt, "## Concept Cluster") {
+		t.Error("BuildReflectPrompt output should still contain the cluster data after system prompt")
+	}
+}
+
 // TestReflectSystem verifies the REFLECT_SYSTEM constant is non-empty and
 // contains the expected XML output instructions.
 func TestReflectSystem(t *testing.T) {

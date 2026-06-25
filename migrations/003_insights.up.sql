@@ -29,9 +29,11 @@ CREATE TABLE insights (
 CREATE INDEX IF NOT EXISTS idx_insights_confidence ON insights (confidence DESC) WHERE deleted = false;
 CREATE INDEX IF NOT EXISTS idx_insights_project ON insights (project) WHERE deleted = false AND project IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_insights_tags ON insights USING GIN (tags) WHERE deleted = false;
+CREATE INDEX IF NOT EXISTS idx_insights_fts ON insights USING GIN (to_tsvector('english', title || ' ' || content)) WHERE deleted = false;
 
 -- ===========================================================================
 -- Memories
 -- ===========================================================================
+ALTER TABLE memories ADD COLUMN IF NOT EXISTS deleted BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE memories ADD COLUMN IF NOT EXISTS reflected BOOLEAN NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS idx_memories_reflected ON memories (reflected) WHERE reflected = false AND deleted = false;

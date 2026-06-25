@@ -42,7 +42,7 @@ type mockReflectionQuerier struct {
 	listMemories          func(ctx context.Context, limit int32) ([]store.Memory, error)
 	upsertInsight         func(ctx context.Context, params store.UpsertInsightParams) error
 	markMemoriesReflected func(ctx context.Context, ids []string) error
-	applyDecay            func(ctx context.Context, weeksSince float64) error
+	applyDecayWithCounts func(ctx context.Context, weeksSince float64) (store.ApplyDecayWithCountsRow, error)
 	listInsights          func(ctx context.Context, arg store.ListInsightsParams) ([]store.ListInsightsRow, error)
 	searchInsights        func(ctx context.Context, arg store.SearchInsightsParams) ([]store.SearchInsightsRow, error)
 }
@@ -59,11 +59,11 @@ func (m *mockReflectionQuerier) MarkMemoriesReflected(ctx context.Context, ids [
 	return m.markMemoriesReflected(ctx, ids)
 }
 
-func (m *mockReflectionQuerier) ApplyDecay(ctx context.Context, weeksSince float64) error {
-	if m.applyDecay == nil {
-		return nil
+func (m *mockReflectionQuerier) ApplyDecayWithCounts(ctx context.Context, weeksSince float64) (store.ApplyDecayWithCountsRow, error) {
+	if m.applyDecayWithCounts == nil {
+		return store.ApplyDecayWithCountsRow{}, nil
 	}
-	return m.applyDecay(ctx, weeksSince)
+	return m.applyDecayWithCounts(ctx, weeksSince)
 }
 
 func (m *mockReflectionQuerier) ListInsights(ctx context.Context, arg store.ListInsightsParams) ([]store.ListInsightsRow, error) {

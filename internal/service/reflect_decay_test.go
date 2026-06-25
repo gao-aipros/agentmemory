@@ -9,8 +9,9 @@ import (
 )
 
 // TestDecayInsights_ConfidenceDecrease verifies that DecayInsights calls
-// ApplyDecay with the correct weeksSince parameter. The actual confidence
-// computation (confidence - decay_rate * weeksSince, floored at GREATEST(0.05, ...))
+// ApplyDecayWithCounts with the correct weeksSince parameter and returns the
+// counts from the SQL query. The actual confidence computation
+// (confidence - decay_rate * weeksSince, floored at GREATEST(0.05, ...))
 // is handled by the SQL query — this test validates the service layer delegation.
 func TestDecayInsights_ConfidenceDecrease(t *testing.T) {
 	ctx := context.Background()
@@ -29,9 +30,9 @@ func TestDecayInsights_ConfidenceDecrease(t *testing.T) {
 			t.Error("MarkMemoriesReflected should not be called during DecayInsights")
 			return nil
 		},
-		applyDecay: func(ctx context.Context, weeksSince float64) error {
+		applyDecayWithCounts: func(ctx context.Context, weeksSince float64) (store.ApplyDecayWithCountsRow, error) {
 			capturedWeeks = weeksSince
-			return nil
+			return store.ApplyDecayWithCountsRow{DecayedCount: 5, SoftDeletedCount: 2}, nil
 		},
 	}
 	mockLLM := &mockReflectionLLM{}
@@ -40,14 +41,13 @@ func TestDecayInsights_ConfidenceDecrease(t *testing.T) {
 	decayed, softDeleted, err := svc.DecayInsights(ctx, 2.0)
 
 	assert.NoError(t, err)
-	assert.Equal(t, 2.0, capturedWeeks, "ApplyDecay should be called with weeksSince=2.0")
-	// Counts are 0 from the thin wrapper; the SQL query handles all logic internally.
-	assert.Equal(t, 0, decayed)
-	assert.Equal(t, 0, softDeleted)
+	assert.Equal(t, 2.0, capturedWeeks, "ApplyDecayWithCounts should be called with weeksSince=2.0")
+	assert.Equal(t, 5, decayed, "should return decayed count from SQL query")
+	assert.Equal(t, 2, softDeleted, "should return soft-deleted count from SQL query")
 }
 
 // TestDecayInsights_ReinforcedNotDecayed verifies that DecayInsights delegates
-// to ApplyDecay. The SQL WHERE clause (last_reinforced_at IS NULL OR
+// to ApplyDecayWithCounts. The SQL WHERE clause (last_reinforced_at IS NULL OR
 // last_reinforced_at < now() - INTERVAL '1 week') ensures recently reinforced
 // insights are not touched.
 func TestDecayInsights_ReinforcedNotDecayed(t *testing.T) {
@@ -55,94 +55,105 @@ func TestDecayInsights_ReinforcedNotDecayed(t *testing.T) {
 
 	var capturedWeeks float64
 	mockQ := &mockReflectionQuerier{
-		applyDecay: func(ctx context.Context, weeksSince float64) error {
+		applyDecayWithCounts: func(ctx context.Context, weeksSince float64) (store.ApplyDecayWithCountsRow, error) {
 			capturedWeeks = weeksSince
-			return nil
+			return store.ApplyDecayWithCountsRow{DecayedCount: 3, SoftDeletedCount: 0}, nil
 		},
 	}
 	mockLLM := &mockReflectionLLM{}
 
 	svc := newReflectionServiceWithQuerier(mockQ, mockLLM)
-	_, _, err := svc.DecayInsights(ctx, 1.0)
+	decayed, softDeleted, err := svc.DecayInsights(ctx, 1.0)
 
 	assert.NoError(t, err)
 	assert.Equal(t, 1.0, capturedWeeks,
-		"DecayInsights should delegate to ApplyDecay which handles the reinforced-at condition in SQL")
+		"DecayInsights should delegate to ApplyDecayWithCounts which handles the reinforced-at condition in SQL")
+	assert.Equal(t, 3, decayed, "should return decayed count from SQL query")
+	assert.Equal(t, 0, softDeleted, "should return soft-deleted count from SQL query")
 }
 
-// TestDecayInsights_SoftDelete verifies that DecayInsights delegates to ApplyDecay.
-// The SQL CASE clause soft-deletes insights when confidence drops to ≤0.1 AND
-// reinforcement_count = 0 (set deleted = true).
+// TestDecayInsights_SoftDelete verifies that DecayInsights delegates to
+// ApplyDecayWithCounts. The SQL CASE clause soft-deletes insights when confidence
+// drops to ≤0.1 AND reinforcement_count = 0 (set deleted = true).
 func TestDecayInsights_SoftDelete(t *testing.T) {
 	ctx := context.Background()
 
 	called := false
 	mockQ := &mockReflectionQuerier{
-		applyDecay: func(ctx context.Context, weeksSince float64) error {
+		applyDecayWithCounts: func(ctx context.Context, weeksSince float64) (store.ApplyDecayWithCountsRow, error) {
 			called = true
-			return nil
+			return store.ApplyDecayWithCountsRow{DecayedCount: 10, SoftDeletedCount: 3}, nil
 		},
 	}
 	mockLLM := &mockReflectionLLM{}
 
 	svc := newReflectionServiceWithQuerier(mockQ, mockLLM)
-	_, _, err := svc.DecayInsights(ctx, 2.0)
+	decayed, softDeleted, err := svc.DecayInsights(ctx, 2.0)
 
 	assert.NoError(t, err)
-	assert.True(t, called, "ApplyDecay should be called; the SQL CASE handles soft-delete logic")
+	assert.True(t, called, "ApplyDecayWithCounts should be called; the SQL CASE handles soft-delete logic")
+	assert.Equal(t, 10, decayed, "should return decayed count from SQL query")
+	assert.Equal(t, 3, softDeleted, "should return soft-deleted count from SQL query")
 }
 
-// TestDecayInsights_AlreadyDeleted verifies that DecayInsights delegates to ApplyDecay.
-// The SQL WHERE clause (deleted = false) ensures already-deleted insights are skipped.
+// TestDecayInsights_AlreadyDeleted verifies that DecayInsights delegates to
+// ApplyDecayWithCounts. The SQL WHERE clause (deleted = false) ensures
+// already-deleted insights are skipped.
 func TestDecayInsights_AlreadyDeleted(t *testing.T) {
 	ctx := context.Background()
 
 	called := false
 	mockQ := &mockReflectionQuerier{
-		applyDecay: func(ctx context.Context, weeksSince float64) error {
+		applyDecayWithCounts: func(ctx context.Context, weeksSince float64) (store.ApplyDecayWithCountsRow, error) {
 			called = true
-			return nil
+			return store.ApplyDecayWithCountsRow{DecayedCount: 7, SoftDeletedCount: 1}, nil
 		},
 	}
 	mockLLM := &mockReflectionLLM{}
 
 	svc := newReflectionServiceWithQuerier(mockQ, mockLLM)
-	_, _, err := svc.DecayInsights(ctx, 3.0)
+	decayed, softDeleted, err := svc.DecayInsights(ctx, 3.0)
 
 	assert.NoError(t, err)
-	assert.True(t, called, "ApplyDecay should be called; the SQL WHERE clause handles the already-deleted guard")
+	assert.True(t, called, "ApplyDecayWithCounts should be called; the SQL WHERE clause handles the already-deleted guard")
+	assert.Equal(t, 7, decayed, "should return decayed count from SQL query")
+	assert.Equal(t, 1, softDeleted, "should return soft-deleted count from SQL query")
 }
 
-// TestDecayInsights_ConfidenceFloor verifies that DecayInsights delegates to ApplyDecay.
-// The SQL GREATEST(0.05, ...) ensures confidence never drops below 0.05.
+// TestDecayInsights_ConfidenceFloor verifies that DecayInsights delegates to
+// ApplyDecayWithCounts. The SQL GREATEST(0.05, ...) ensures confidence never
+// drops below 0.05.
 func TestDecayInsights_ConfidenceFloor(t *testing.T) {
 	ctx := context.Background()
 
 	var capturedWeeks float64
 	mockQ := &mockReflectionQuerier{
-		applyDecay: func(ctx context.Context, weeksSince float64) error {
+		applyDecayWithCounts: func(ctx context.Context, weeksSince float64) (store.ApplyDecayWithCountsRow, error) {
 			capturedWeeks = weeksSince
-			return nil
+			return store.ApplyDecayWithCountsRow{DecayedCount: 2, SoftDeletedCount: 0}, nil
 		},
 	}
 	mockLLM := &mockReflectionLLM{}
 
 	svc := newReflectionServiceWithQuerier(mockQ, mockLLM)
-	_, _, err := svc.DecayInsights(ctx, 3.0)
+	decayed, softDeleted, err := svc.DecayInsights(ctx, 3.0)
 
 	assert.NoError(t, err)
 	assert.Equal(t, 3.0, capturedWeeks,
-		"DecayInsights should delegate to ApplyDecay which applies the GREATEST(0.05, ...) floor in SQL")
+		"DecayInsights should delegate to ApplyDecayWithCounts which applies the GREATEST(0.05, ...) floor in SQL")
+	assert.Equal(t, 2, decayed, "should return decayed count from SQL query")
+	assert.Equal(t, 0, softDeleted, "should return soft-deleted count from SQL query")
 }
 
-// TestDecayInsights_ErrorPropagation verifies that when ApplyDecay returns an
-// error, DecayInsights propagates it as a wrapped error.
+// TestDecayInsights_ErrorPropagation verifies that when ApplyDecayWithCounts
+// returns an error, DecayInsights propagates it as a wrapped error and returns
+// zero counts.
 func TestDecayInsights_ErrorPropagation(t *testing.T) {
 	ctx := context.Background()
 
 	mockQ := &mockReflectionQuerier{
-		applyDecay: func(ctx context.Context, weeksSince float64) error {
-			return assert.AnError
+		applyDecayWithCounts: func(ctx context.Context, weeksSince float64) (store.ApplyDecayWithCountsRow, error) {
+			return store.ApplyDecayWithCountsRow{}, assert.AnError
 		},
 	}
 	mockLLM := &mockReflectionLLM{}
@@ -152,6 +163,6 @@ func TestDecayInsights_ErrorPropagation(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to apply decay")
-	assert.Equal(t, 0, decayed)
-	assert.Equal(t, 0, softDeleted)
+	assert.Equal(t, 0, decayed, "decayed count should be 0 on error")
+	assert.Equal(t, 0, softDeleted, "soft-deleted count should be 0 on error")
 }

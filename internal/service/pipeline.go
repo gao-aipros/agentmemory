@@ -262,7 +262,7 @@ type reflectionQuerier interface {
 	ListAllMemories(ctx context.Context, limit int32) ([]store.Memory, error)
 	UpsertInsight(ctx context.Context, params store.UpsertInsightParams) error
 	MarkMemoriesReflected(ctx context.Context, ids []string) error
-	ApplyDecay(ctx context.Context, weeksSince float64) error
+	ApplyDecayWithCounts(ctx context.Context, weeksSince float64) (store.ApplyDecayWithCountsRow, error)
 	ListInsights(ctx context.Context, arg store.ListInsightsParams) ([]store.ListInsightsRow, error)
 	SearchInsights(ctx context.Context, arg store.SearchInsightsParams) ([]store.SearchInsightsRow, error)
 }
@@ -382,6 +382,7 @@ func (s *ReflectionService) RunReflection(ctx context.Context, project string, m
 		}
 
 		// Persist each parsed insight
+		persistedCount := 0
 		for _, insight := range insights {
 			id := InsightFingerprint(insight.Content)
 			if err := s.queries.UpsertInsight(ctx, store.UpsertInsightParams{
@@ -397,11 +398,14 @@ func (s *ReflectionService) RunReflection(ctx context.Context, project string, m
 				continue
 			}
 			insightCount++
+			persistedCount++
 		}
 
-		// Mark memories in this cluster as reflected
-		if err := s.queries.MarkMemoriesReflected(ctx, memoryIDs); err != nil {
-			slog.Warn("failed to mark memories reflected", "error", err)
+		// Mark memories in this cluster as reflected only if at least one insight was persisted
+		if persistedCount > 0 {
+			if err := s.queries.MarkMemoriesReflected(ctx, memoryIDs); err != nil {
+				slog.Warn("failed to mark memories reflected", "error", err)
+			}
 		}
 	}
 

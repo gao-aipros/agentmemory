@@ -12,9 +12,9 @@ import (
 func TestParseReflectResponse(t *testing.T) {
 	t.Run("valid XML with multiple insights", func(t *testing.T) {
 		input := `<insights>
-<insight confidence="0.85" title="User prefers dark mode">The user consistently selects dark themes across all applications and has expressed a strong preference for reduced blue light exposure.</insight>
-<insight confidence="0.72" title="Morning productivity peak">User completes the most coding tasks between 7 AM and 10 AM local time, with significantly fewer contributions after 2 PM.</insight>
-</insights>`
+	<insight confidence="0.85" title="User prefers dark mode">The user consistently selects dark themes across all applications and has expressed a strong preference for reduced blue light exposure.</insight>
+	<insight confidence="0.72" title="Morning productivity peak">User completes the most coding tasks between 7 AM and 10 AM local time, with significantly fewer contributions after 2 PM.</insight>
+	</insights>`
 		results := ParseReflectResponse(input)
 		require.Len(t, results, 2)
 
@@ -29,9 +29,9 @@ func TestParseReflectResponse(t *testing.T) {
 
 	t.Run("malformed XML missing closing tag on one insight", func(t *testing.T) {
 		input := `<insights>
-<insight confidence="0.90" title="Valid insight">This insight is complete and well-formed.</insight>
-<insight confidence="0.60" title="Broken insight">This insight is missing its closing tag.
-</insights>`
+	<insight confidence="0.90" title="Valid insight">This insight is complete and well-formed.</insight>
+	<insight confidence="0.60" title="Broken insight">This insight is missing its closing tag.
+	</insights>`
 		results := ParseReflectResponse(input)
 		require.Len(t, results, 1)
 		assert.InDelta(t, 0.90, results[0].Confidence, 1e-6)
@@ -47,9 +47,9 @@ func TestParseReflectResponse(t *testing.T) {
 
 	t.Run("missing confidence attribute", func(t *testing.T) {
 		input := `<insights>
-<insight title="No confidence here">This insight block has a title but no confidence attribute.</insight>
-<insight confidence="0.50" title="Good insight">This one is properly formed.</insight>
-</insights>`
+	<insight title="No confidence here">This insight block has a title but no confidence attribute.</insight>
+	<insight confidence="0.50" title="Good insight">This one is properly formed.</insight>
+	</insights>`
 		results := ParseReflectResponse(input)
 		require.Len(t, results, 1)
 		assert.InDelta(t, 0.50, results[0].Confidence, 1e-6)
@@ -58,9 +58,9 @@ func TestParseReflectResponse(t *testing.T) {
 
 	t.Run("missing title attribute", func(t *testing.T) {
 		input := `<insights>
-<insight confidence="0.80">This insight block has confidence but no title attribute.</insight>
-<insight confidence="0.50" title="Good insight">This one is properly formed.</insight>
-</insights>`
+	<insight confidence="0.80">This insight block has confidence but no title attribute.</insight>
+	<insight confidence="0.50" title="Good insight">This one is properly formed.</insight>
+	</insights>`
 		results := ParseReflectResponse(input)
 		require.Len(t, results, 1)
 		assert.InDelta(t, 0.50, results[0].Confidence, 1e-6)
@@ -69,10 +69,10 @@ func TestParseReflectResponse(t *testing.T) {
 
 	t.Run("confidence out of range", func(t *testing.T) {
 		input := `<insights>
-<insight confidence="1.5" title="Too high">This confidence is above 1.0 and should be rejected.</insight>
-<insight confidence="-0.3" title="Too low">This confidence is below 0.0 and should be rejected.</insight>
-<insight confidence="0.65" title="Just right">This insight has a valid confidence value.</insight>
-</insights>`
+	<insight confidence="1.5" title="Too high">This confidence is above 1.0 and should be rejected.</insight>
+	<insight confidence="-0.3" title="Too low">This confidence is below 0.0 and should be rejected.</insight>
+	<insight confidence="0.65" title="Just right">This insight has a valid confidence value.</insight>
+	</insights>`
 		results := ParseReflectResponse(input)
 		require.Len(t, results, 1)
 		assert.InDelta(t, 0.65, results[0].Confidence, 1e-6)
@@ -81,9 +81,9 @@ func TestParseReflectResponse(t *testing.T) {
 
 	t.Run("title exceeds 60 characters", func(t *testing.T) {
 		input := `<insights>
-<insight confidence="0.80" title="This title is way too long and exceeds the maximum allowed length of sixty characters for insight titles">This insight has an overly long title.</insight>
-<insight confidence="0.55" title="Short title">This one has a reasonable title length.</insight>
-</insights>`
+	<insight confidence="0.80" title="This title is way too long and exceeds the maximum allowed length of sixty characters for insight titles">This insight has an overly long title.</insight>
+	<insight confidence="0.55" title="Short title">This one has a reasonable title length.</insight>
+	</insights>`
 		// Verify the long title actually exceeds 60 chars
 		longTitle := "This title is way too long and exceeds the maximum allowed length of sixty characters for insight titles"
 		assert.Greater(t, len(longTitle), 60)
@@ -96,9 +96,9 @@ func TestParseReflectResponse(t *testing.T) {
 
 	t.Run("content is only whitespace", func(t *testing.T) {
 		input := `<insights>
-<insight confidence="0.75" title="Whitespace only">   </insight>
-<insight confidence="0.62" title="Real content">This insight has actual meaningful content to parse.</insight>
-</insights>`
+	<insight confidence="0.75" title="Whitespace only">   </insight>
+	<insight confidence="0.62" title="Real content">This insight has actual meaningful content to parse.</insight>
+	</insights>`
 		results := ParseReflectResponse(input)
 		require.Len(t, results, 1)
 		assert.InDelta(t, 0.62, results[0].Confidence, 1e-6)
@@ -108,12 +108,12 @@ func TestParseReflectResponse(t *testing.T) {
 	t.Run("extra wrapper text around insights tags", func(t *testing.T) {
 		input := `Here are the insights I've derived from the conversation:
 
-<insights>
-<insight confidence="0.92" title="Memory is working">The user values long-term memory persistence across sessions.</insight>
-<insight confidence="0.88" title="Pattern recognition">The user frequently references past coding patterns when solving new problems.</insight>
-</insights>
+	<insights>
+	<insight confidence="0.92" title="Memory is working">The user values long-term memory persistence across sessions.</insight>
+	<insight confidence="0.88" title="Pattern recognition">The user frequently references past coding patterns when solving new problems.</insight>
+	</insights>
 
-I hope this helps summarize the key findings.`
+	I hope this helps summarize the key findings.`
 		results := ParseReflectResponse(input)
 		require.Len(t, results, 2)
 		assert.InDelta(t, 0.92, results[0].Confidence, 1e-6)
@@ -124,9 +124,9 @@ I hope this helps summarize the key findings.`
 
 	t.Run("attributes in reverse order (title before confidence)", func(t *testing.T) {
 		input := `<insights>
-<insight title="Reversed attributes" confidence="0.78">This insight declares title before confidence, opposite of typical order.</insight>
-<insight title="Second insight" confidence="0.91">Another insight with reversed attribute order.</insight>
-</insights>`
+	<insight title="Reversed attributes" confidence="0.78">This insight declares title before confidence, opposite of typical order.</insight>
+	<insight title="Second insight" confidence="0.91">Another insight with reversed attribute order.</insight>
+	</insights>`
 		results := ParseReflectResponse(input)
 		require.Len(t, results, 2)
 		assert.InDelta(t, 0.78, results[0].Confidence, 1e-6)
@@ -136,5 +136,36 @@ I hope this helps summarize the key findings.`
 		assert.InDelta(t, 0.91, results[1].Confidence, 1e-6)
 		assert.Equal(t, "Second insight", results[1].Title)
 		assert.Equal(t, "Another insight with reversed attribute order.", results[1].Content)
+	})
+
+	t.Run("multi-line content with content on next line after opening tag", func(t *testing.T) {
+		input := `<insights>
+	<insight confidence="0.8" title="Multi-line content next line">
+	Multi-line insight content that starts on the line after the opening tag.
+	</insight>
+	<insight confidence="0.65" title="Second single-line insight">This insight is on a single line and should still parse.</insight>
+	</insights>`
+		results := ParseReflectResponse(input)
+		require.Len(t, results, 2)
+		assert.InDelta(t, 0.8, results[0].Confidence, 1e-6)
+		assert.Equal(t, "Multi-line content next line", results[0].Title)
+		assert.Contains(t, results[0].Content, "Multi-line insight content")
+		assert.InDelta(t, 0.65, results[1].Confidence, 1e-6)
+		assert.Equal(t, "Second single-line insight", results[1].Title)
+		assert.Equal(t, "This insight is on a single line and should still parse.", results[1].Content)
+	})
+
+	t.Run("multi-line content spanning multiple paragraphs", func(t *testing.T) {
+		input := `<insight confidence="0.9" title="Paragraph insight">
+	First paragraph of insight content.
+
+	Second paragraph of insight content spanning a second line.
+</insight>`
+		results := ParseReflectResponse(input)
+		require.Len(t, results, 1)
+		assert.InDelta(t, 0.9, results[0].Confidence, 1e-6)
+		assert.Equal(t, "Paragraph insight", results[0].Title)
+		assert.Contains(t, results[0].Content, "First paragraph")
+		assert.Contains(t, results[0].Content, "Second paragraph")
 	})
 }

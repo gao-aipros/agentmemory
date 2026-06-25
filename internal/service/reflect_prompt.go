@@ -46,12 +46,16 @@ type LessonRef struct {
 }
 
 // BuildReflectPrompt constructs the user prompt for the LLM reflect stage
-// from a cluster of related concepts, facts, and lessons. It formats the
-// cluster data with markdown sections, matching v0's structure.
+// from a cluster of related concepts, facts, and lessons. It prepends the
+// REFLECT_SYSTEM as a system header so the LLM receives format instructions
+// alongside the cluster data in a single prompt string.
 func BuildReflectPrompt(cluster ReflectCluster) string {
-	var sections []string
+	var sb strings.Builder
 
-	sections = append(sections, fmt.Sprintf("## Concept Cluster: %s", strings.Join(cluster.Concepts, ", ")))
+	sb.WriteString(REFLECT_SYSTEM)
+	sb.WriteString("\n\n---\n\n")
+
+	sections := []string{fmt.Sprintf("## Concept Cluster: %s", strings.Join(cluster.Concepts, ", "))}
 
 	if len(cluster.Facts) > 0 {
 		lines := []string{"\n## Known Facts"}
@@ -69,5 +73,6 @@ func BuildReflectPrompt(cluster ReflectCluster) string {
 		sections = append(sections, lines...)
 	}
 
-	return fmt.Sprintf("Synthesize higher-order insights from this cluster of related memories:\n\n%s", strings.Join(sections, "\n"))
+	sb.WriteString(fmt.Sprintf("Synthesize higher-order insights from this cluster of related memories:\n\n%s", strings.Join(sections, "\n")))
+	return sb.String()
 }
