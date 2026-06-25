@@ -329,6 +329,9 @@ func (s *ReflectionService) RunReflection(ctx context.Context, project string, m
 	// Cap at maxClusters (clusters fed to the LLM, not including skipped small ones)
 	clustersProcessed := 0
 	insightCount := 0
+	skippedClusters := 0
+	var totalClusters int
+	var failedClusters int
 
 	for _, cluster := range clusters {
 		// Enforce maxClusters cap
@@ -338,9 +341,16 @@ func (s *ReflectionService) RunReflection(ctx context.Context, project string, m
 
 		// Skip clusters with fewer than 3 memories (not enough signal)
 		if len(cluster.Memories) < 3 {
+			concepts := uniqueConcepts(cluster.Memories)
+			slog.Debug("skipping small cluster",
+				"memory_count", len(cluster.Memories),
+				"concepts", concepts,
+			)
+			skippedClusters++
 			continue
 		}
 
+		totalClusters++
 		clustersProcessed++
 
 		// Convert cluster memories to a ReflectCluster for the prompt
@@ -358,6 +368,7 @@ func (s *ReflectionService) RunReflection(ctx context.Context, project string, m
 				"error", err,
 				"concepts", concepts,
 			)
+			failedClusters++
 			continue
 		}
 
@@ -401,6 +412,11 @@ func (s *ReflectionService) RunReflection(ctx context.Context, project string, m
 			persistedCount++
 		}
 
+		// Track cluster failure if no insights were persisted
+		if persistedCount == 0 {
+			failedClusters++
+		}
+
 		// Mark memories in this cluster as reflected only if at least one insight was persisted
 		if persistedCount > 0 {
 			if err := s.queries.MarkMemoriesReflected(ctx, memoryIDs); err != nil {
@@ -413,7 +429,21 @@ func (s *ReflectionService) RunReflection(ctx context.Context, project string, m
 		"memories", len(memories),
 		"clusters", len(clusters),
 		"insights", insightCount,
+		"skipped_clusters", skippedClusters,
 	)
+
+	// If all clusters failed, return an error so the caller can distinguish
+	// total failure from success. This is required by CLAUDE.md Rule 12.
+	if totalClusters > 0 && failedClusters == totalClusters {
+		return fmt.Errorf("all %d reflection clusters failed", totalClusters)
+	}
+
+	// Partial failure is logged but not returned as an error -- some clusters
+	// may have succeeded, which is acceptable.
+	if failedClusters > 0 {
+		slog.Warn("partial reflection failure", "failed", failedClusters, "total", totalClusters)
+	}
+
 	return nil
 }
 

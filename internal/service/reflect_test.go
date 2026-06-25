@@ -1,7 +1,9 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"sync"
 	"testing"
 
@@ -273,6 +275,54 @@ func TestRunReflection_SkipsSmallClusters(t *testing.T) {
 	assert.False(t, llmCalled, "LLM should not be called when no cluster has 3+ memories")
 }
 
+// TestRunReflection_LogsSkippedSmallClusters verifies that small clusters are
+// logged and counted as skipped in the final reflection log.
+func TestRunReflection_LogsSkippedSmallClusters(t *testing.T) {
+	ctx := context.Background()
+
+	// Capture slog output
+	var buf bytes.Buffer
+	handler := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	originalLogger := slog.Default()
+	slog.SetDefault(slog.New(handler))
+	t.Cleanup(func() { slog.SetDefault(originalLogger) })
+
+	mockQ := &mockReflectionQuerier{
+		listMemories: func(ctx context.Context, limit int32) ([]store.Memory, error) {
+			// 2 memories sharing a concept — one small cluster below the 3-memory threshold
+			return []store.Memory{
+				{ID: "s1", Content: "Single observation", Concepts: []string{"small"}},
+				{ID: "s2", Content: "Related observation", Concepts: []string{"small"}},
+			}, nil
+		},
+		upsertInsight: func(ctx context.Context, params store.UpsertInsightParams) error {
+			t.Error("UpsertInsight should not be called for a small cluster")
+			return nil
+		},
+		markMemoriesReflected: func(ctx context.Context, ids []string) error {
+			t.Error("MarkMemoriesReflected should not be called for a small cluster")
+			return nil
+		},
+	}
+
+	mockLLM := &mockReflectionLLM{
+		callFunc: func(ctx context.Context, prompt string) (string, error) {
+			t.Error("LLM should not be called for a small cluster")
+			return "", nil
+		},
+	}
+
+	svc := newReflectionServiceWithQuerier(mockQ, mockLLM)
+	err := svc.RunReflection(ctx, "", 10)
+	assert.NoError(t, err)
+
+	logOutput := buf.String()
+	assert.Contains(t, logOutput, "skipping small cluster",
+		"should log when a small cluster is skipped")
+	assert.Contains(t, logOutput, "skipped_clusters",
+		"final log line should include skipped_clusters counter")
+}
+
 // TestRunReflection_LLMFailure verifies that when the LLM returns an error for
 // one cluster, processing continues with the remaining clusters.
 func TestRunReflection_LLMFailure(t *testing.T) {
@@ -526,5 +576,6 @@ func TestRunReflection_NoInsights_DoesNotMarkReflected(t *testing.T) {
 
 	svc := newReflectionServiceWithQuerier(mockQ, mockLLM)
 	err := svc.RunReflection(ctx, "", 10)
-	assert.NoError(t, err)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "all 1 reflection clusters failed")
 }

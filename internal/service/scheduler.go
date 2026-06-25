@@ -446,9 +446,20 @@ func (s *Scheduler) ProcessConsolidation(ctx context.Context) error {
 	return nil
 }
 
-// processReflection is the Tier 3 scheduler function: checks if there are
-// unreflected memories and runs reflection to detect patterns and create insights.
+// processReflection is the Tier 3 scheduler function: decays insights on every
+// tick, then checks for unreflected memories and runs reflection if needed.
 func (s *Scheduler) ProcessReflection(ctx context.Context) error {
+	// Decay runs on every tick, independently of whether there are new memories.
+	weeksSince := float64(s.intervals.Reflection.Hours()) / (24 * 7)
+	if weeksSince < 1.0 {
+		weeksSince = 1.0
+	}
+	if decayed, deleted, err := s.reflectionSvc.DecayInsights(ctx, weeksSince); err != nil {
+		slog.Warn("reflection: decay sweep failed", "error", err)
+	} else {
+		slog.Info("reflection: decay sweep complete", "decayed", decayed, "soft_deleted", deleted)
+	}
+
 	hasUnreflected, err := s.queries.HasUnreflectedMemories(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to check for unreflected memories: %w", err)
@@ -463,5 +474,6 @@ func (s *Scheduler) ProcessReflection(ctx context.Context) error {
 		)
 		return err
 	}
+
 	return nil
 }

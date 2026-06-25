@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -159,6 +160,159 @@ func TestReflectionService_RunReflection_WithMemories(t *testing.T) {
 	assert.InDelta(t, 0.8, capturedInsights[0].Confidence, 1e-6)
 	assert.Contains(t, capturedInsights[0].Content, "Authentication patterns")
 	assert.Contains(t, capturedInsights[0].SourceConceptCluster, "auth")
+}
+
+// TestRunReflection_AllClustersFail verifies that RunReflection returns a non-nil
+// error when every cluster's LLM call fails (Rule 12: no silent passes).
+func TestRunReflection_AllClustersFail(t *testing.T) {
+	ctx := context.Background()
+
+	llmCallCount := 0
+	mockQ := &mockReflectionQuerier{
+		listMemories: func(ctx context.Context, limit int32) ([]store.Memory, error) {
+			return []store.Memory{
+				{ID: "1", Content: "Memory about auth", Concepts: []string{"alpha"}},
+				{ID: "2", Content: "Memory about auth", Concepts: []string{"alpha"}},
+				{ID: "3", Content: "Memory about auth", Concepts: []string{"alpha"}},
+				{ID: "4", Content: "Memory about caching", Concepts: []string{"beta"}},
+				{ID: "5", Content: "Memory about caching", Concepts: []string{"beta"}},
+				{ID: "6", Content: "Memory about caching", Concepts: []string{"beta"}},
+			}, nil
+		},
+		upsertInsight: func(ctx context.Context, params store.UpsertInsightParams) error {
+			t.Error("UpsertInsight should not be called when all LLM calls fail")
+			return nil
+		},
+		markMemoriesReflected: func(ctx context.Context, ids []string) error {
+			t.Error("MarkMemoriesReflected should not be called when all clusters fail")
+			return nil
+		},
+	}
+
+	mockLLM := &mockReflectionLLM{
+		callFunc: func(ctx context.Context, prompt string) (string, error) {
+			llmCallCount++
+			return "", fmt.Errorf("LLM reflection failed")
+		},
+	}
+
+	svc := newReflectionServiceWithQuerier(mockQ, mockLLM)
+	err := svc.RunReflection(ctx, "", 10)
+
+	if err == nil {
+		t.Fatal("RunReflection should return error when all clusters fail")
+	}
+	if !strings.Contains(err.Error(), "all 2 reflection clusters failed") {
+		t.Fatalf("expected error to mention all clusters failed, got: %v", err)
+	}
+	if llmCallCount != 2 {
+		t.Fatalf("expected 2 LLM calls (one per cluster), got %d", llmCallCount)
+	}
+}
+
+// TestRunReflection_PartialFailure verifies that RunReflection does NOT return
+// an error when some clusters fail but at least one succeeds.
+func TestRunReflection_PartialFailure(t *testing.T) {
+	ctx := context.Background()
+
+	var capturedInsights []store.UpsertInsightParams
+	llmCallCount := 0
+
+	mockQ := &mockReflectionQuerier{
+		listMemories: func(ctx context.Context, limit int32) ([]store.Memory, error) {
+			return []store.Memory{
+				{ID: "1", Content: "Memory about auth", Concepts: []string{"alpha"}},
+				{ID: "2", Content: "Memory about auth", Concepts: []string{"alpha"}},
+				{ID: "3", Content: "Memory about auth", Concepts: []string{"alpha"}},
+				{ID: "4", Content: "Memory about caching", Concepts: []string{"beta"}},
+				{ID: "5", Content: "Memory about caching", Concepts: []string{"beta"}},
+				{ID: "6", Content: "Memory about caching", Concepts: []string{"beta"}},
+			}, nil
+		},
+		upsertInsight: func(ctx context.Context, params store.UpsertInsightParams) error {
+			capturedInsights = append(capturedInsights, params)
+			return nil
+		},
+		markMemoriesReflected: func(ctx context.Context, ids []string) error {
+			return nil
+		},
+	}
+
+	mockLLM := &mockReflectionLLM{
+		callFunc: func(ctx context.Context, prompt string) (string, error) {
+			llmCallCount++
+			if llmCallCount == 1 {
+				return "", fmt.Errorf("LLM reflection failed")
+			}
+			return cannedXMLResponse, nil
+		},
+	}
+
+	svc := newReflectionServiceWithQuerier(mockQ, mockLLM)
+	err := svc.RunReflection(ctx, "", 10)
+
+	if err != nil {
+		t.Fatalf("RunReflection should not error with partial failure, got: %v", err)
+	}
+	if llmCallCount != 2 {
+		t.Fatalf("expected 2 LLM calls, got %d", llmCallCount)
+	}
+	if len(capturedInsights) == 0 {
+		t.Fatal("expected insights from the successful cluster")
+	}
+}
+
+// TestRunReflection_AllPersistFail verifies that RunReflection returns a non-nil
+// error when all UpsertInsight calls fail, even if LLM succeeds.
+func TestRunReflection_AllPersistFail(t *testing.T) {
+	ctx := context.Background()
+
+	llmCallCount := 0
+	upsertCallCount := 0
+
+	mockQ := &mockReflectionQuerier{
+		listMemories: func(ctx context.Context, limit int32) ([]store.Memory, error) {
+			return []store.Memory{
+				{ID: "1", Content: "Memory about auth", Concepts: []string{"alpha"}},
+				{ID: "2", Content: "Memory about auth", Concepts: []string{"alpha"}},
+				{ID: "3", Content: "Memory about auth", Concepts: []string{"alpha"}},
+				{ID: "4", Content: "Memory about caching", Concepts: []string{"beta"}},
+				{ID: "5", Content: "Memory about caching", Concepts: []string{"beta"}},
+				{ID: "6", Content: "Memory about caching", Concepts: []string{"beta"}},
+			}, nil
+		},
+		upsertInsight: func(ctx context.Context, params store.UpsertInsightParams) error {
+			upsertCallCount++
+			return fmt.Errorf("db failure")
+		},
+		markMemoriesReflected: func(ctx context.Context, ids []string) error {
+			t.Error("MarkMemoriesReflected should not be called when no insights are persisted")
+			return nil
+		},
+	}
+
+	mockLLM := &mockReflectionLLM{
+		callFunc: func(ctx context.Context, prompt string) (string, error) {
+			llmCallCount++
+			return cannedXMLResponse, nil
+		},
+	}
+
+	svc := newReflectionServiceWithQuerier(mockQ, mockLLM)
+	err := svc.RunReflection(ctx, "", 10)
+
+	if err == nil {
+		t.Fatal("RunReflection should return error when all persist attempts fail")
+	}
+	if !strings.Contains(err.Error(), "all 2 reflection clusters failed") {
+		t.Fatalf("expected error to mention all clusters failed, got: %v", err)
+	}
+	if llmCallCount != 2 {
+		t.Fatalf("expected 2 LLM calls, got %d", llmCallCount)
+	}
+	if upsertCallCount == 0 {
+		t.Fatal("expected UpsertInsight to be called")
+	}
 }
 
 func TestSummarizeSession_EmptyLLMResponse(t *testing.T) {
