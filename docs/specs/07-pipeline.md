@@ -114,14 +114,14 @@ https://github.com/Noodle05/agentmemory
 | Stage | Execution | Rationale |
 |-------|-----------|-----------|
 | **observe** | Synchronous | Fast — single DB insert. Hook needs immediate ack. |
-| **compress** | Async (goroutine) | May call LLM. Non-blocking — observe returns before compress completes. |
-| **summarize** | Async (triggered by SessionEnd) | Runs once per session. Not on the critical path. |
-| **consolidate** | Async (triggered by SessionEnd) | May call LLM, may take minutes. Runs as background job. |
-| **reflect** | Async (scheduled/timer) | Periodically reinforces or decays insights. No caller waiting. |
+| **compress** | Async (session-end or scheduler Tier 0) | May call LLM. Session-end calls CompressSessionNow immediately; scheduler Tier 0 periodically processes uncompressed sessions. `compressed_at` guard prevents duplicate work. |
+| **summarize** | Async (session-end or scheduler Tier 1) | Session-end calls SummarizeSessionNow(isFull=true). Scheduler Tier 1 produces mid-session summaries (isFull=false) for context injection. |
+| **consolidate** | Async (scheduler Tier 2 or MCP) | NOT triggered at session-end. Scheduler Tier 2 (`processConsolidation`) runs on configured interval. Also invocable via `memory_consolidate` MCP tool. DB `ListUnconsolidatedSessions` query guards re-consolidation. |
+| **reflect** | Async (scheduler Tier 3 or MCP) | NOT triggered at session-end. Scheduler Tier 3 (`processReflection`) checks `HasUnreflectedMemories` and runs if new memories exist. Also triggered by `memory_consolidate` MCP tool. |
 | **context injection** | Synchronous | Must complete before agent receives context. Bounded by 1500-token assembly. |
 
-No external job queue (Redis, etc.) — goroutines + PostgreSQL as the state store.
-Consolidation jobs are tracked in DB, recoverable on restart.
+No external job queue (Redis, etc.) — four-tier goroutine scheduler + PostgreSQL as the state store.
+All pipeline stages are recoverable on restart: queries filter by timestamps and state flags rather than ephemeral queue state.
 
 ## Error Handling & Degradation
 

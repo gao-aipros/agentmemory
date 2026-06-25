@@ -35,6 +35,9 @@ type Scheduler struct {
 	queries   *store.Queries
 	intervals SchedulerIntervals
 
+	consolidationSvc *ConsolidationService
+	reflectionSvc    *ReflectionService
+
 	// Overridable process functions (default to private methods, injected for testing).
 	CompressionFunc   SchedulingFunc
 	SummarizationFunc SchedulingFunc
@@ -45,17 +48,19 @@ type Scheduler struct {
 // NewScheduler creates a new Scheduler with the given dependencies and intervals.
 func NewScheduler(pool *pgxpool.Pool, llm *LLMService, embed *EmbeddingService, intervals SchedulerIntervals) *Scheduler {
 	s := &Scheduler{
-		pool:      pool,
-		llm:       llm,
-		embed:     embed,
-		queries:   store.New(pool),
-		intervals: intervals,
+		pool:             pool,
+		llm:              llm,
+		embed:            embed,
+		queries:          store.New(pool),
+		intervals:        intervals,
+		consolidationSvc: NewConsolidationService(pool, llm, DefaultConsolidationMode("member_choice", false)),
+		reflectionSvc:    NewReflectionService(pool, 3600),
 	}
 	// Wire default process functions to the private implementations.
-	s.CompressionFunc = s.processCompression
-	s.SummarizationFunc = s.processSummarization
-	s.ConsolidationFunc = s.processConsolidation
-	s.ReflectionFunc = s.processReflection
+	s.CompressionFunc = s.ProcessCompression
+	s.SummarizationFunc = s.ProcessSummarization
+	s.ConsolidationFunc = s.ProcessConsolidation
+	s.ReflectionFunc = s.ProcessReflection
 	return s
 }
 
@@ -113,14 +118,18 @@ func (s *Scheduler) SummarizeSessionNow(ctx context.Context, sessionID string, i
 
 // processCompression is the Tier 0 scheduler function: scans for sessions with
 // uncompressed observations and batch-compresses them.
-func (s *Scheduler) processCompression(ctx context.Context) error {
+func (s *Scheduler) ProcessCompression(ctx context.Context) error {
 	sessions, err := s.queries.ListSessionsWithUncompressedObservations(ctx)
 	if err != nil {
 		return err
 	}
 	for _, sessionID := range sessions {
 		if err := s.compressSession(ctx, sessionID); err != nil {
-			slog.Warn("compression failed for session", "session_id", sessionID, "error", err)
+			slog.Warn("compression: failed for session",
+				"session_id", sessionID,
+				"tier", "Tier0(compress)",
+				"error", err,
+			)
 		}
 	}
 	return nil
@@ -370,25 +379,77 @@ func (s *Scheduler) summarizeSession(ctx context.Context, sessionID string, isFu
 }
 
 // processSummarization scans for sessions needing summarization and summarizes them.
-func (s *Scheduler) processSummarization(ctx context.Context) error {
+func (s *Scheduler) ProcessSummarization(ctx context.Context) error {
 	sessions, err := s.queries.ListSessionsNeedingSummarization(ctx)
 	if err != nil {
 		return err
 	}
 	for _, sessionID := range sessions {
 		if err := s.summarizeSession(ctx, sessionID, false); err != nil {
-			slog.Warn("summarization failed for session", "session_id", sessionID, "error", err)
+			slog.Warn("summarization: failed for session",
+				"session_id", sessionID,
+				"tier", "Tier1(summarize)",
+				"error", err,
+			)
 		}
 	}
 	return nil
 }
 
-// processConsolidation is a no-op stub for consolidation processing.
-func (s *Scheduler) processConsolidation(ctx context.Context) error {
+// processConsolidation is the Tier 2 scheduler function: scans for sessions with
+// summaries that have not yet been consolidated and runs the consolidation service.
+func (s *Scheduler) ProcessConsolidation(ctx context.Context) error {
+	sessions, err := s.queries.ListUnconsolidatedSessions(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list unconsolidated sessions: %w", err)
+	}
+	for _, sessionID := range sessions {
+		// Get the session to extract ownership (user_id, team_id) for memory scoping.
+		session, err := s.queries.GetSession(ctx, sessionID)
+		if err != nil {
+			slog.Warn("consolidation: failed to get session",
+				"session_id", sessionID,
+				"tier", "Tier2(consolidate)",
+				"error", err,
+			)
+			continue
+		}
+
+		// Set ownership from the session so memories/lessons satisfy FK constraints.
+		var teamID string
+		if session.TeamID != nil {
+			teamID = *session.TeamID
+		}
+		s.consolidationSvc.SetOwner(session.UserID, teamID)
+
+		if err := s.consolidationSvc.ConsolidateSession(ctx, sessionID); err != nil {
+			slog.Warn("consolidation: failed to consolidate session",
+				"session_id", sessionID,
+				"tier", "Tier2(consolidate)",
+				"error", err,
+			)
+			continue
+		}
+	}
 	return nil
 }
 
-// processReflection is a no-op stub for reflection processing.
-func (s *Scheduler) processReflection(ctx context.Context) error {
+// processReflection is the Tier 3 scheduler function: checks if there are
+// unreflected memories and runs reflection to detect patterns and create insights.
+func (s *Scheduler) ProcessReflection(ctx context.Context) error {
+	hasUnreflected, err := s.queries.HasUnreflectedMemories(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to check for unreflected memories: %w", err)
+	}
+	if !hasUnreflected {
+		return nil
+	}
+	if err := s.reflectionSvc.RunReflection(ctx, "", 10); err != nil {
+		slog.Warn("reflection: failed to run reflection",
+			"tier", "Tier3(reflect)",
+			"error", err,
+		)
+		return err
+	}
 	return nil
 }
