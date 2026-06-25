@@ -1,6 +1,7 @@
 package unit
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/agentmemory/agentmemory/internal/service"
@@ -14,9 +15,9 @@ import (
 
 func TestContextBudget_DefaultTokenLimit(t *testing.T) {
 	budget := service.DefaultContextBudget()
-	assert.Equal(t, 1500, budget.TotalTokens, "default budget should be 1500 tokens")
-	assert.Equal(t, 1100, budget.SourceTokens, "source content should be ~1100 tokens")
-	assert.Equal(t, 400, budget.OverheadTokens, "overhead should be ~400 tokens")
+	assert.Equal(t, 2000, budget.TotalTokens, "default budget should be 2000 tokens")
+	assert.Equal(t, 1466, budget.SourceTokens, "source content should be ~1466 tokens")
+	assert.Equal(t, 534, budget.OverheadTokens, "overhead should be ~534 tokens")
 }
 
 func TestContextBudget_TotalEqualsSourcePlusOverhead(t *testing.T) {
@@ -28,7 +29,7 @@ func TestContextBudget_TotalEqualsSourcePlusOverhead(t *testing.T) {
 func TestContextBudget_CustomLimit(t *testing.T) {
 	budget := service.NewContextBudget(2000)
 	assert.Equal(t, 2000, budget.TotalTokens)
-	// Source tokens should be proportional: ~73% of total (2000 * 1100/1500 = 1466)
+	// Source tokens should be proportional: ~73% of total (2000 * 1466/2000 = 1466)
 	expectedSource := 1466
 	assert.InDelta(t, expectedSource, budget.SourceTokens, 5)
 }
@@ -86,6 +87,40 @@ func TestContextBudget_MultipleSentences(t *testing.T) {
 	// ~15 words * 1.3 = ~20 tokens
 	assert.Greater(t, tokens, 10)
 	assert.Less(t, tokens, 40)
+}
+
+func TestApplyBudget_WrapsOutputInXmlContextTag(t *testing.T) {
+	budget := service.DefaultContextBudget()
+	assembled := &service.AssembledContext{
+		Graph:         "node1: PostgreSQL connection pool",
+		Lessons:       "lesson1: Always set connection timeout",
+		Observations:  "obs1: Observed connection pool settings",
+		Recap:         "Previous session: database infrastructure",
+		WorkingMemory: "Current task: search feature",
+	}
+
+	result := service.ApplyBudget(assembled, budget)
+	require.NotEmpty(t, result)
+
+	// Must start with opening XML tag
+	assert.Contains(t, result, "<agentmemory-context",
+		"output must open with <agentmemory-context> tag")
+	assert.Contains(t, result, "version=\"2\"",
+		"output must include version=\"2\" attribute")
+
+	// Must end with closing XML tag
+	assert.Contains(t, result, "</agentmemory-context>",
+		"output must close with </agentmemory-context> tag")
+
+	// Opening tag must precede closing tag
+	openIdx := strings.Index(result, "<agentmemory-context")
+	closeIdx := strings.Index(result, "</agentmemory-context>")
+	assert.Greater(t, closeIdx, openIdx,
+		"closing tag must appear after opening tag")
+
+	// Content between tags should still contain markdown headers
+	assert.Contains(t, result, "### Context (AgentMemory v2)",
+		"inner markdown structure must be preserved")
 }
 
 func TestContextBudget_RespectsTotalLimit(t *testing.T) {

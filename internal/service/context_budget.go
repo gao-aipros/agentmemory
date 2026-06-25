@@ -23,20 +23,21 @@ type BucketAllocation struct {
 	WorkingMemory int
 }
 
-// DefaultContextBudget returns the standard 1500-token budget.
+// DefaultContextBudget returns the standard 2000-token budget.
+// Matches v0 TOKEN_BUDGET default.
 func DefaultContextBudget() ContextBudget {
 	return ContextBudget{
-		TotalTokens:    1500,
-		SourceTokens:   1100,
-		OverheadTokens: 400,
+		TotalTokens:    2000,
+		SourceTokens:   1466,
+		OverheadTokens: 534,
 	}
 }
 
 // NewContextBudget creates a budget with the given total token limit.
 // Allocations are computed proportionally to the default budget ratios.
+// Source is ~73% of total (1466/2000).
 func NewContextBudget(totalTokens int) ContextBudget {
-	// Default ratio: source is 1100/1500 of total
-	sourceTokens := int(float64(totalTokens) * (1100.0 / 1500.0))
+	sourceTokens := int(float64(totalTokens) * (1466.0 / 2000.0))
 	overheadTokens := totalTokens - sourceTokens
 	return ContextBudget{
 		TotalTokens:    totalTokens,
@@ -164,14 +165,17 @@ func ApplyBudget(assembled *AssembledContext, budget ContextBudget) string {
 		result += workingMemoryFormatted + "\n"
 	}
 
-	// Ensure final result respects budget
+	// Ensure result respects budget (hard truncation as last resort)
 	resultTokens := EstimateTokens(result)
 	if resultTokens > budget.TotalTokens {
-		// Hard truncation as last resort
 		result = truncateToTokens(result, budget.TotalTokens)
 	}
 
-	return strings.TrimSpace(result)
+	// Wrap in XML context tag (matching v0 pattern).
+	// XML wrapper is structural framing — not counted against the content budget.
+	result = "<agentmemory-context version=\"2\">\n" + strings.TrimSpace(result) + "\n</agentmemory-context>"
+
+	return result
 }
 
 // truncateToTokens truncates text to fit within a token budget.
