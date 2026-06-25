@@ -248,9 +248,7 @@ func RegisterAllTools(mcpServer *mcp.Server, svc *ServiceBundle) {
 	registerMemoryNext(mcpServer, svc)
 
 	// Pipeline + Governance + Export + Graph + Context (T128-T132)
-	registerMemoryConsolidate(mcpServer, svc)
 	registerMemoryCrystallize(mcpServer, svc)
-	registerMemoryReflect(mcpServer, svc)
 	registerMemoryDiagnose(mcpServer, svc)
 	registerMemoryHeal(mcpServer, svc)
 	registerMemoryVerify(mcpServer, svc)
@@ -1271,76 +1269,6 @@ func registerMemoryNext(mcpServer *mcp.Server, svc *ServiceBundle) {
 	})
 }
 
-// =============================================================================
-// Pipeline + Governance + Export + Graph + Context (T128-T132)
-// =============================================================================
-
-func registerMemoryConsolidate(mcpServer *mcp.Server, svc *ServiceBundle) {
-	type args struct {
-		Tier      string `json:"tier,omitempty"`
-		SessionID string `json:"session_id,omitempty"`
-	}
-
-	mcpServer.AddTool(&mcp.Tool{
-		Name:        "memory_consolidate",
-		Description: "Run the memory consolidation pipeline on a session: summarize -> consolidate -> reflect.",
-		InputSchema: map[string]interface{}{
-			"type": "object",
-			"properties": map[string]interface{}{
-				"tier":       optStringProp("Target tier: episodic, semantic, or procedural"),
-				"session_id": optStringProp("Session ID to consolidate (uses most recent if omitted)"),
-			},
-			"required": []string{},
-		},
-	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		var a args
-		if err := parseArguments(req, &a); err != nil {
-			return nil, err
-		}
-
-		sessionID := a.SessionID
-		if sessionID == "" {
-			return &mcp.CallToolResult{
-				IsError: true,
-				Content: []mcp.Content{
-					&mcp.TextContent{Text: "session_id is required for consolidation"},
-				},
-			}, nil
-		}
-
-		// Run summarization
-		if err := svc.Summarization.SummarizeSession(ctx, sessionID); err != nil {
-			return &mcp.CallToolResult{
-				IsError: true,
-				Content: []mcp.Content{
-					&mcp.TextContent{Text: "summarization failed: " + err.Error()},
-				},
-			}, nil
-		}
-
-		// Set owner from auth context so memories/lessons satisfy FK constraints
-		userID := auth.GetUserIDFromContext(ctx)
-		svc.Consolidation.SetOwner(userID, "")
-
-		// Run consolidation
-		if err := svc.Consolidation.ConsolidateSession(ctx, sessionID); err != nil {
-			return &mcp.CallToolResult{
-				IsError: true,
-				Content: []mcp.Content{
-					&mcp.TextContent{Text: "consolidation failed: " + err.Error()},
-				},
-			}, nil
-		}
-
-		svc.Reflection.TriggerTimerCheck(ctx)
-
-		return jsonResult(map[string]interface{}{
-			"session_id": sessionID,
-			"status":     "consolidated",
-			"pipeline":   []string{"summarized", "consolidated", "reflection_checked"},
-		})
-	})
-}
 
 func registerMemoryCrystallize(mcpServer *mcp.Server, svc *ServiceBundle) {
 	type args struct {
@@ -1389,50 +1317,6 @@ func registerMemoryCrystallize(mcpServer *mcp.Server, svc *ServiceBundle) {
 			"files_affected": crystal.FilesAffected,
 			"lessons":       crystal.Lessons,
 			"status":        "crystallized",
-		})
-	})
-}
-
-func registerMemoryReflect(mcpServer *mcp.Server, svc *ServiceBundle) {
-	type args struct {
-		Project     string   `json:"project,omitempty"`
-		MaxClusters *float64 `json:"max_clusters,omitempty"`
-	}
-
-	mcpServer.AddTool(&mcp.Tool{
-		Name:        "memory_reflect",
-		Description: "Traverse the knowledge graph, group related memories by concept clusters, and synthesize higher-order insights via LLM.",
-		InputSchema: map[string]interface{}{
-			"type": "object",
-			"properties": map[string]interface{}{
-				"project":      optStringProp("Filter by project"),
-				"max_clusters": numberProp("Max concept clusters to process (default 10, max 20)"),
-			},
-			"required": []string{},
-		},
-	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		var a args
-		if err := parseArguments(req, &a); err != nil {
-			return nil, err
-		}
-
-		maxClusters := 10
-		if a.MaxClusters != nil && *a.MaxClusters > 0 {
-			maxClusters = int(*a.MaxClusters)
-		}
-
-		if err := svc.Reflection.RunReflection(ctx, a.Project, maxClusters); err != nil {
-			return &mcp.CallToolResult{
-				IsError: true,
-				Content: []mcp.Content{
-					&mcp.TextContent{Text: err.Error()},
-				},
-			}, nil
-		}
-
-		return jsonResult(map[string]interface{}{
-			"status":  "reflection_complete",
-			"message": "Reflection pipeline completed successfully",
 		})
 	})
 }

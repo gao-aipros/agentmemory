@@ -289,18 +289,6 @@ func TestMCPToolResponsesAreObjects(t *testing.T) {
 		verifyIsJSONObject(t, result)
 	})
 
-	t.Run("memory_consolidate result is object", func(t *testing.T) {
-		result, err := jsonResult(map[string]interface{}{
-			"session_id": "sess-1",
-			"status":     "consolidated",
-			"pipeline":   []string{"summarized"},
-		})
-		if err != nil {
-			t.Fatalf("jsonResult failed: %v", err)
-		}
-		verifyIsJSONObject(t, result)
-	})
-
 	t.Run("memory_crystallize result is object", func(t *testing.T) {
 		result, err := jsonResult(map[string]interface{}{
 			"crystal_id":      "cry-1",
@@ -309,17 +297,6 @@ func TestMCPToolResponsesAreObjects(t *testing.T) {
 			"files_affected":  []string{},
 			"lessons":         []string{},
 			"status":          "crystallized",
-		})
-		if err != nil {
-			t.Fatalf("jsonResult failed: %v", err)
-		}
-		verifyIsJSONObject(t, result)
-	})
-
-	t.Run("memory_reflect result is object", func(t *testing.T) {
-		result, err := jsonResult(map[string]interface{}{
-			"status":  "reflection_complete",
-			"message": "Reflection done",
 		})
 		if err != nil {
 			t.Fatalf("jsonResult failed: %v", err)

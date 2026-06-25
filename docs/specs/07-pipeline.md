@@ -116,8 +116,8 @@ https://github.com/Noodle05/agentmemory
 | **observe** | Synchronous | Fast — single DB insert. Hook needs immediate ack. |
 | **compress** | Async (session-end or scheduler Tier 0) | May call LLM. Session-end calls CompressSessionNow immediately; scheduler Tier 0 periodically processes uncompressed sessions. `compressed_at` guard prevents duplicate work. |
 | **summarize** | Async (session-end or scheduler Tier 1) | Session-end calls SummarizeSessionNow(isFull=true). Scheduler Tier 1 produces mid-session summaries (isFull=false) for context injection. |
-| **consolidate** | Async (scheduler Tier 2 or MCP) | NOT triggered at session-end. Scheduler Tier 2 (`processConsolidation`) runs on configured interval. Also invocable via `memory_consolidate` MCP tool. DB `ListUnconsolidatedSessions` query guards re-consolidation. |
-| **reflect** | Async (scheduler Tier 3 or MCP) | NOT triggered at session-end. Scheduler Tier 3 (`processReflection`) checks `HasUnreflectedMemories` and runs if new memories exist. Also triggered by `memory_consolidate` MCP tool. |
+| **consolidate** | Async (scheduler Tier 2) | NOT triggered at session-end. Scheduler Tier 2 (`processConsolidation`) runs on configured interval. DB `ListUnconsolidatedSessions` query guards re-consolidation. |
+| **reflect** | Async (scheduler Tier 3) | NOT triggered at session-end. Scheduler Tier 3 (`processReflection`) checks `HasUnreflectedMemories` and runs if new memories exist. |
 | **context injection** | Synchronous | Must complete before agent receives context. Bounded by 1500-token assembly. |
 
 No external job queue (Redis, etc.) — four-tier goroutine scheduler + PostgreSQL as the state store.

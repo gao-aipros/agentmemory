@@ -50,10 +50,8 @@ var allMCPToolNames = []string{
 	"memory_frontier",
 	"memory_next",
 
-	// Pipeline + Governance + Export + Graph (17)
-	"memory_consolidate",
+	// Pipeline + Governance + Export + Graph (13)
 	"memory_crystallize",
-	"memory_reflect",
 	"memory_diagnose",
 	"memory_heal",
 	"memory_verify",
@@ -319,7 +317,6 @@ func TestMCPCompat_ErrorHandling(t *testing.T) {
 		{"memory_export", map[string]interface{}{}, "stub with no args"},
 		{"memory_obsidian_export", map[string]interface{}{}, "stub with no args"},
 		{"memory_patterns", map[string]interface{}{}, "stub with no args"},
-		{"memory_reflect", map[string]interface{}{}, "stub with no args"},
 		{"memory_commits", map[string]interface{}{}, "stub with no args"},
 		{"memory_mesh_sync", map[string]interface{}{}, "stub with no args"},
 		{"team_feed", map[string]interface{}{}, "stub with no args"},

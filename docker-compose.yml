@@ -19,6 +19,10 @@ services:
       DB_URL: postgres://agentmemory:agentmemory@db:5432/agentmemory?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       MIGRATE_ON_STARTUP: "true"
+      COMPRESSION_INTERVAL_MINUTES: ${COMPRESSION_INTERVAL_MINUTES:-60}
+      SUMMARIZATION_INTERVAL_MINUTES: ${SUMMARIZATION_INTERVAL_MINUTES:-120}
+      CONSOLIDATION_INTERVAL_MINUTES: ${CONSOLIDATION_INTERVAL_MINUTES:-360}
+      REFLECTION_INTERVAL_MINUTES: ${REFLECTION_INTERVAL_MINUTES:-1440}
     depends_on:
       db:
         condition: service_healthy
