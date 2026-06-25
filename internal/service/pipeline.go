@@ -250,11 +250,21 @@ func (s *ConsolidationService) ConsolidateSession(ctx context.Context, sessionID
 	return nil
 }
 
+// reflectLLM is the LLM interface used by ReflectionService.
+// *LLMService satisfies this interface; mocks are used in tests.
+type reflectLLM interface {
+	Call(ctx context.Context, prompt string) (string, error)
+}
+
 // reflectionQuerier is the subset of database operations needed by ReflectionService.
 // The concrete *store.Queries satisfies this interface, enabling mock-based unit testing.
 type reflectionQuerier interface {
 	ListAllMemories(ctx context.Context, limit int32) ([]store.Memory, error)
-	InsertInsight(ctx context.Context, params store.InsertInsightParams) error
+	UpsertInsight(ctx context.Context, params store.UpsertInsightParams) error
+	MarkMemoriesReflected(ctx context.Context, ids []string) error
+	ApplyDecay(ctx context.Context, weeksSince float64) error
+	ListInsights(ctx context.Context, arg store.ListInsightsParams) ([]store.ListInsightsRow, error)
+	SearchInsights(ctx context.Context, arg store.SearchInsightsParams) ([]store.SearchInsightsRow, error)
 }
 
 // ReflectionService handles periodic reflection: clustering memories,
@@ -262,29 +272,35 @@ type reflectionQuerier interface {
 type ReflectionService struct {
 	queries       reflectionQuerier
 	timerInterval int // seconds
+	llm           reflectLLM
 }
 
 // NewReflectionService creates a new ReflectionService.
-func NewReflectionService(pool *pgxpool.Pool, timerIntervalSeconds int) *ReflectionService {
+func NewReflectionService(pool *pgxpool.Pool, timerIntervalSeconds int, llm reflectLLM) *ReflectionService {
 	if timerIntervalSeconds <= 0 {
 		timerIntervalSeconds = 3600
 	}
 	return &ReflectionService{
 		queries:       store.New(pool),
 		timerInterval: timerIntervalSeconds,
+		llm:           llm,
 	}
 }
 
 // newReflectionServiceWithQuerier creates a ReflectionService with a custom querier (for testing).
-func newReflectionServiceWithQuerier(q reflectionQuerier) *ReflectionService {
+func newReflectionServiceWithQuerier(q reflectionQuerier, llm reflectLLM) *ReflectionService {
 	return &ReflectionService{
 		queries:       q,
 		timerInterval: 3600,
+		llm:           llm,
 	}
 }
 
 // RunReflection fetches memories from the database, groups them by shared concepts,
-// detects patterns, synthesizes insights, and persists them.
+// builds LLM prompts for qualifying clusters (3+ memories), parses the LLM response
+// into insights, and persists them via UpsertInsight with content-based fingerprint IDs.
+// Clusters with fewer than 3 memories are skipped. maxClusters caps the number of
+// clusters processed via LLM. On LLM failure the cluster is skipped with a WARN log.
 func (s *ReflectionService) RunReflection(ctx context.Context, project string, maxClusters int) error {
 	// Fetch memories (up to 1000)
 	memories, err := s.queries.ListAllMemories(ctx, 1000)
@@ -308,33 +324,91 @@ func (s *ReflectionService) RunReflection(ctx context.Context, project string, m
 	}
 
 	// Cluster memories by shared concepts
-	// Note: project and maxClusters are accepted for future LLM-based reflection
-	// but not yet used by the pure clustering functions.
 	clusters := GroupMemoriesByConcept(reflectionMemories)
 
-	// Detect patterns and synthesize insights for each cluster
-	var allInsights []SynthesizedInsight
-	for _, cluster := range clusters {
-		patterns := DetectPatterns(cluster)
-		insights := SynthesizeInsights(patterns)
-		allInsights = append(allInsights, insights...)
-	}
+	// Cap at maxClusters (clusters fed to the LLM, not including skipped small ones)
+	clustersProcessed := 0
+	insightCount := 0
 
-	// Persist each insight
-	for _, insight := range allInsights {
-		if err := s.queries.InsertInsight(ctx, store.InsertInsightParams{
-				ID:         uuid.New().String(),
-				Content:    insight.Content,
-				Confidence: insight.Confidence,
+	for _, cluster := range clusters {
+		// Enforce maxClusters cap
+		if maxClusters > 0 && clustersProcessed >= maxClusters {
+			break
+		}
+
+		// Skip clusters with fewer than 3 memories (not enough signal)
+		if len(cluster.Memories) < 3 {
+			continue
+		}
+
+		clustersProcessed++
+
+		// Convert cluster memories to a ReflectCluster for the prompt
+		concepts := uniqueConcepts(cluster.Memories)
+		facts := memoriesToFacts(cluster.Memories)
+		reflectCluster := ReflectCluster{
+			Concepts: concepts,
+			Facts:    facts,
+		}
+
+		prompt := BuildReflectPrompt(reflectCluster)
+		response, err := s.llm.Call(ctx, prompt)
+		if err != nil {
+			slog.Warn("LLM reflection failed for cluster, skipping",
+				"error", err,
+				"concepts", concepts,
+			)
+			continue
+		}
+
+		// Parse LLM response into structured insights
+		insights := ParseReflectResponse(response)
+
+		// Cap at 5 insights per cluster (per spec FR-014)
+		if len(insights) > 5 {
+			insights = insights[:5]
+		}
+
+		// Collect memory IDs for MarkMemoriesReflected
+		memoryIDs := make([]string, len(cluster.Memories))
+		for i, m := range cluster.Memories {
+			memoryIDs[i] = m.ID
+		}
+
+		// Project pointer for UpsertInsight
+		var projectPtr *string
+		if project != "" {
+			projectPtr = &project
+		}
+
+		// Persist each parsed insight
+		for _, insight := range insights {
+			id := InsightFingerprint(insight.Content)
+			if err := s.queries.UpsertInsight(ctx, store.UpsertInsightParams{
+				ID:                   id,
+				Title:                insight.Title,
+				Content:              insight.Content,
+				Confidence:           insight.Confidence,
+				SourceConceptCluster: concepts,
+				SourceMemoryIds:      memoryIDs,
+				Project:              projectPtr,
 			}); err != nil {
-			slog.Warn("failed to persist insight", "error", err)
+				slog.Warn("failed to persist insight", "error", err)
+				continue
+			}
+			insightCount++
+		}
+
+		// Mark memories in this cluster as reflected
+		if err := s.queries.MarkMemoriesReflected(ctx, memoryIDs); err != nil {
+			slog.Warn("failed to mark memories reflected", "error", err)
 		}
 	}
 
 	slog.Info("reflection complete",
 		"memories", len(memories),
 		"clusters", len(clusters),
-		"insights", len(allInsights),
+		"insights", insightCount,
 	)
 	return nil
 }
@@ -346,5 +420,112 @@ func (s *ReflectionService) TriggerTimerCheck(ctx context.Context) {
 	if err := s.RunReflection(ctx, "", 10); err != nil {
 		slog.Warn("reflection run failed", "error", err)
 	}
+}
+
+// ListInsights returns insights filtered by project and minimum confidence, ordered by confidence descending.
+func (s *ReflectionService) ListInsights(ctx context.Context, project string, minConfidence float64, limit int32) ([]store.Insight, error) {
+	var projectPtr *string
+	if project != "" {
+		projectPtr = &project
+	}
+	var mc *float64
+	if minConfidence > 0 {
+		mc = &minConfidence
+	}
+
+	rows, err := s.queries.ListInsights(ctx, store.ListInsightsParams{
+		Limit:         limit,
+		Project:       projectPtr,
+		MinConfidence: mc,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list insights: %w", err)
+	}
+
+	insights := make([]store.Insight, len(rows))
+	for i, r := range rows {
+		insights[i] = store.Insight{
+			ID:                 r.ID,
+			Title:              r.Title,
+			Content:            r.Content,
+			Confidence:         r.Confidence,
+			ReinforcementCount: r.ReinforcementCount,
+			Project:            r.Project,
+			Tags:               r.Tags,
+			CreatedAt:          r.CreatedAt,
+			UpdatedAt:          r.UpdatedAt,
+		}
+	}
+	return insights, nil
+}
+
+// SearchInsights performs a full-text search on insights, filtered by project and minimum confidence.
+func (s *ReflectionService) SearchInsights(ctx context.Context, project string, query string, minConfidence float64, limit int32) ([]store.Insight, error) {
+	var projectPtr *string
+	if project != "" {
+		projectPtr = &project
+	}
+	var mc *float64
+	if minConfidence > 0 {
+		mc = &minConfidence
+	}
+	var queryPtr *string
+	if query != "" {
+		queryPtr = &query
+	}
+
+	rows, err := s.queries.SearchInsights(ctx, store.SearchInsightsParams{
+		Limit:         limit,
+		Project:       projectPtr,
+		MinConfidence: mc,
+		Query:         queryPtr,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to search insights: %w", err)
+	}
+
+	insights := make([]store.Insight, len(rows))
+	for i, r := range rows {
+		insights[i] = store.Insight{
+			ID:                 r.ID,
+			Title:              r.Title,
+			Content:            r.Content,
+			Confidence:         r.Confidence,
+			ReinforcementCount: r.ReinforcementCount,
+			Project:            r.Project,
+			Tags:               r.Tags,
+			CreatedAt:          r.CreatedAt,
+			UpdatedAt:          r.UpdatedAt,
+		}
+	}
+	return insights, nil
+}
+
+// uniqueConcepts returns the deduplicated, lowercased list of concepts across all memories.
+func uniqueConcepts(memories []MemoryForReflection) []string {
+	seen := make(map[string]bool)
+	var result []string
+	for _, m := range memories {
+		for _, c := range m.Concepts {
+			c = strings.ToLower(strings.TrimSpace(c))
+			if c != "" && !seen[c] {
+				seen[c] = true
+				result = append(result, c)
+			}
+		}
+	}
+	return result
+}
+
+// memoriesToFacts converts each memory's content into a FactRef with base confidence 0.5.
+func memoriesToFacts(memories []MemoryForReflection) []FactRef {
+	facts := make([]FactRef, 0, len(memories))
+	for _, m := range memories {
+		facts = append(facts, FactRef{
+			Fact:       m.Content,
+			Confidence: 0.5,
+		})
+	}
+	return facts
 }
 

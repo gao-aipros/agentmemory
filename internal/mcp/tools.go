@@ -79,7 +79,7 @@ func NewServiceBundle(pool *pgxpool.Pool) *ServiceBundle {
 	summarizer := service.NewSummarizationService(pool, llmSvc)
 	mode := service.DefaultConsolidationMode("member_choice", false)
 	consolidator := service.NewConsolidationService(pool, llmSvc, mode)
-	reflector := service.NewReflectionService(pool, 3600)
+	reflector := service.NewReflectionService(pool, 3600, llmSvc)
 	slotSvc := service.NewSlotService(pool)
 	ctxSvc := service.NewContextService(pool, embedSvc, slotSvc)
 	evictSvc := service.NewEvictionService(pool)
@@ -285,6 +285,7 @@ func RegisterAllTools(mcpServer *mcp.Server, svc *ServiceBundle) {
 	registerMemoryFileHistory(mcpServer, svc)
 	registerMemoryLease(mcpServer, svc)
 	registerMemoryInsightList(mcpServer, svc)
+	registerMemoryInsightSearch(mcpServer, svc)
 	registerMemoryTeamShare(mcpServer, svc)
 	registerMemoryClaudeBridgeSync(mcpServer, svc)
 }
@@ -2399,7 +2400,118 @@ func registerMemoryInsightList(mcpServer *mcp.Server, svc *ServiceBundle) {
 			"required": []string{},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return stubbedToolResult("memory_insight_list"), nil
+		type args struct {
+			Limit         int     `json:"limit,omitempty"`
+			MinConfidence float64 `json:"min_confidence,omitempty"`
+			Project       string  `json:"project,omitempty"`
+		}
+
+		var a args
+		if err := parseArguments(req, &a); err != nil {
+			return nil, err
+		}
+
+		limit := int32(a.Limit)
+		if limit <= 0 {
+			limit = 50
+		}
+
+		insights, err := svc.Reflection.ListInsights(ctx, a.Project, a.MinConfidence, limit)
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, nil
+		}
+
+		result := make([]map[string]interface{}, len(insights))
+		for i, ins := range insights {
+			result[i] = map[string]interface{}{
+				"id":                  ins.ID,
+				"title":               ins.Title,
+				"content":             truncateStr(ins.Content, 200),
+				"confidence":          ins.Confidence,
+				"reinforcement_count": ins.ReinforcementCount,
+				"project":             ins.Project,
+			}
+		}
+
+		return jsonResult(map[string]interface{}{
+			"insights": result,
+			"count":    len(result),
+		})
+	})
+}
+
+func registerMemoryInsightSearch(mcpServer *mcp.Server, svc *ServiceBundle) {
+	mcpServer.AddTool(&mcp.Tool{
+		Name:        "memory_insight_search",
+		Description: "Full-text search across synthesized insights. Searches both title and content for the given query.",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"query":          stringProp("Full-text search query"),
+				"limit":          numberProp("Max results (default 50)"),
+				"min_confidence": numberProp("Minimum confidence threshold (default 0)"),
+				"project":        optStringProp("Filter by project"),
+			},
+			"required": []string{"query"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		type args struct {
+			Query         string  `json:"query"`
+			Limit         int     `json:"limit,omitempty"`
+			MinConfidence float64 `json:"min_confidence,omitempty"`
+			Project       string  `json:"project,omitempty"`
+		}
+
+		var a args
+		if err := parseArguments(req, &a); err != nil {
+			return nil, err
+		}
+
+		if a.Query == "" {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: "query is required"},
+				},
+			}, nil
+		}
+
+		limit := int32(a.Limit)
+		if limit <= 0 {
+			limit = 50
+		}
+
+		insights, err := svc.Reflection.SearchInsights(ctx, a.Project, a.Query, a.MinConfidence, limit)
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, nil
+		}
+
+		result := make([]map[string]interface{}, len(insights))
+		for i, ins := range insights {
+			result[i] = map[string]interface{}{
+				"id":                  ins.ID,
+				"title":               ins.Title,
+				"content":             truncateStr(ins.Content, 200),
+				"confidence":          ins.Confidence,
+				"reinforcement_count": ins.ReinforcementCount,
+				"project":             ins.Project,
+			}
+		}
+
+		return jsonResult(map[string]interface{}{
+			"insights": result,
+			"count":    len(result),
+		})
 	})
 }
 

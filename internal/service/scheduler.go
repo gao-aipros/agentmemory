@@ -54,7 +54,7 @@ func NewScheduler(pool *pgxpool.Pool, llm *LLMService, embed *EmbeddingService, 
 		queries:          store.New(pool),
 		intervals:        intervals,
 		consolidationSvc: NewConsolidationService(pool, llm, DefaultConsolidationMode("member_choice", false)),
-		reflectionSvc:    NewReflectionService(pool, 3600),
+		reflectionSvc:    NewReflectionService(pool, 3600, llm),
 	}
 	// Wire default process functions to the private implementations.
 	s.CompressionFunc = s.ProcessCompression
