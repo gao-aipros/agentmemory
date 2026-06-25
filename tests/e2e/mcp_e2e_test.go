@@ -484,40 +484,36 @@ func TestMCP_PipelineE2E(t *testing.T) {
 		t.Logf("Session-end summary: %d chars, is_full=%v", len(summaryText), isFull)
 	})
 
-	// ---- Step 5: Get user ID for consolidation context ----
-	var userID string
-	err = pool.QueryRow(ctx, "SELECT id FROM users LIMIT 1").Scan(&userID)
-	require.NoError(t, err, "get user ID")
-	t.Logf("User ID: %s", userID)
-
-	// ---- Step 6: Consolidation + reflection via MCP (scheduler-only, not at session-end) ----
+	// ---- Step 6: Consolidation + reflection via scheduler ----
+	// Tier 2 (consolidation) and Tier 3 (reflection) run on the scheduler's
+	// cadence, not on-demand. With CONSOLIDATION_INTERVAL_MINUTES=1 etc. the
+	// scheduler fires within ~1 minute. We poll DB until results land.
 	t.Run("Consolidation_And_Reflection", func(t *testing.T) {
-		// memory_consolidate triggers summarize + consolidate + reflect via MCP.
-		// Consolidation and reflection are NOT part of session-end -- they are
-		// scheduler-tier operations (Tier 2 and Tier 3) or explicit MCP calls.
-		result, err := session.CallTool(ctx, &mcp.CallToolParams{
-			Name: "memory_consolidate",
-			Arguments: map[string]any{
-				"session_id":    sessionID,
-				"tier":          "procedural",
-				"owner_user_id": userID,
-			},
-		})
-		require.NoError(t, err, "memory_consolidate call")
-		require.False(t, result.IsError, "memory_consolidate should succeed")
+		// Wait for scheduler-driven consolidation
+		pollDB(t, pool,
+			"SELECT COUNT(*) FROM memories WHERE source = 'consolidation'",
+			1, 120*time.Second)
+		pollDB(t, pool,
+			"SELECT COUNT(*) FROM lessons WHERE source = 'consolidation'",
+			1, 120*time.Second)
 
-		// Verify consolidation output: memories + lessons with source='consolidation'
+		// Verify consolidation output
 		var memCount, lesCount int
 		pool.QueryRow(ctx, "SELECT COUNT(*) FROM memories WHERE source = 'consolidation'").Scan(&memCount)
 		pool.QueryRow(ctx, "SELECT COUNT(*) FROM lessons WHERE source = 'consolidation'").Scan(&lesCount)
-		assert.GreaterOrEqual(t, memCount, 1, "memories should exist (LLM consolidation worked)")
-		assert.GreaterOrEqual(t, lesCount, 1, "lessons should exist (LLM consolidation worked)")
+		assert.GreaterOrEqual(t, memCount, 1, "memories should exist (scheduler consolidation worked)")
+		assert.GreaterOrEqual(t, lesCount, 1, "lessons should exist (scheduler consolidation worked)")
 		t.Logf("Consolidation: %d memories, %d lessons", memCount, lesCount)
 
-		// Verify reflection output: insights with source='reflect'
+		// Wait for scheduler-driven reflection
+		pollDB(t, pool,
+			"SELECT COUNT(*) FROM insights WHERE source = 'reflect'",
+			1, 120*time.Second)
+
+		// Verify reflection output
 		var insCount int
 		pool.QueryRow(ctx, "SELECT COUNT(*) FROM insights WHERE source = 'reflect'").Scan(&insCount)
-		assert.GreaterOrEqual(t, insCount, 1, "insights should exist (reflection worked)")
+		assert.GreaterOrEqual(t, insCount, 1, "insights should exist (scheduler reflection worked)")
 		t.Logf("Reflection: %d insights", insCount)
 	})
 

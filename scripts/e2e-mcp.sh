@@ -21,6 +21,13 @@ trap cleanup EXIT
 
 echo "==> Starting docker compose..."
 docker compose down --volumes 2>/dev/null || true
+
+# Override scheduler intervals to fire within ~1 minute for e2e testing
+export COMPRESSION_INTERVAL_MINUTES=1m
+export SUMMARIZATION_INTERVAL_MINUTES=1m
+export CONSOLIDATION_INTERVAL_MINUTES=1m
+export REFLECTION_INTERVAL_MINUTES=1m
+
 docker compose up -d --build
 
 echo "==> Waiting for health..."

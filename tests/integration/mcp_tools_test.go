@@ -94,9 +94,7 @@ func TestMCPToolRegistration(t *testing.T) {
 		"memory_next",
 
 		// Pipeline + Governance + Export + Graph
-		"memory_consolidate",
 		"memory_crystallize",
-		"memory_reflect",
 		"memory_diagnose",
 		"memory_heal",
 		"memory_verify",
