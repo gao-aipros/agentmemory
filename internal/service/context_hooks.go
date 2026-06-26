@@ -29,15 +29,18 @@ type ContextHookResult struct {
 // ContextHookManager manages the 3 context injection triggers:
 // SessionStart, PreToolUse, and PreCompact.
 type ContextHookManager struct {
-	ctxSvc *ContextService
-	gate   *ContextGate
+	ctxSvc     *ContextService
+	gate       *ContextGate
+	profileSvc *ProfileService // optional; nil disables profile section injection
 }
 
 // NewContextHookManager creates a new ContextHookManager.
-func NewContextHookManager(ctxSvc *ContextService, gate *ContextGate) *ContextHookManager {
+// profileSvc is optional; pass nil when profile injection is not needed.
+func NewContextHookManager(ctxSvc *ContextService, gate *ContextGate, profileSvc *ProfileService) *ContextHookManager {
 	return &ContextHookManager{
-		ctxSvc: ctxSvc,
-		gate:   gate,
+		ctxSvc:     ctxSvc,
+		gate:       gate,
+		profileSvc: profileSvc,
 	}
 }
 
@@ -59,6 +62,17 @@ func (m *ContextHookManager) TriggerSessionStart(ctx context.Context, userID str
 			HookType:   ContextHookSessionStart,
 			Skipped:    true,
 			SkipReason: "assembly failed: " + err.Error(),
+		}
+	}
+
+	// Inject profile section if profile service is available.
+	// Uses userID as the projectSlug for now — project_slug scoping is still evolving.
+	if m.profileSvc != nil {
+		profile, err := m.profileSvc.GetProfile(ctx, userID)
+		if err == nil && profile != nil {
+			assembled.ProfileSection = buildProfileSection(profile)
+		} else if err != nil {
+			slog.Warn("failed to get profile for session_start", "user_id", userID, "error", err)
 		}
 	}
 

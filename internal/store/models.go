@@ -155,6 +155,16 @@ type ProceduralMemory struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type ProjectProfile struct {
+	ProjectSlug  string
+	TopConcepts  []byte
+	TopFiles     []byte
+	Conventions  []string
+	CommonErrors []byte
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+}
+
 type SchemaMigration struct {
 	Version int64
 	Dirty   bool

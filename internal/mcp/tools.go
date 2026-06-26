@@ -39,6 +39,8 @@ type ServiceBundle struct {
 	LLM           *service.LLMService
 	SessionEnd    *service.SessionEndHandler
 	Eviction      *service.EvictionService
+	Profile       *service.ProfileService
+	ContextHooks  *service.ContextHookManager
 
 	// v1 Service Tools (Task #24)
 	Signal      *service.SignalService
@@ -80,13 +82,16 @@ func NewServiceBundle(pool *pgxpool.Pool) *ServiceBundle {
 	mode := service.DefaultConsolidationMode("member_choice", false)
 	consolidator := service.NewConsolidationService(pool, llmSvc, mode)
 	reflector := service.NewReflectionService(pool, 3600, llmSvc)
+	profileSvc := service.NewProfileService(pool, llmSvc.Model())
 	slotSvc := service.NewSlotService(pool)
 	ctxSvc := service.NewContextService(pool, embedSvc, slotSvc)
+	ctxGate := service.NewContextGate()
+	ctxHookMgr := service.NewContextHookManager(ctxSvc, ctxGate, profileSvc)
 	evictSvc := service.NewEvictionService(pool)
 	// Create Scheduler for session-end immediate operations (intervals are zero —
 	// periodic tiers are configured in serve.go where a separate Scheduler is created).
-	scheduler := service.NewScheduler(pool, llmSvc, embedSvc, service.SchedulerIntervals{})
-	sessionEndH := service.NewSessionEndHandler(sessionSvc, scheduler, summarizer, consolidator, reflector, &sync.WaitGroup{}, semaphore.NewWeighted(20))
+	scheduler := service.NewScheduler(pool, llmSvc, embedSvc, service.SchedulerIntervals{}, profileSvc)
+	sessionEndH := service.NewSessionEndHandler(sessionSvc, scheduler, summarizer, consolidator, reflector, profileSvc, &sync.WaitGroup{}, semaphore.NewWeighted(20))
 	signalSvc := service.NewSignalService(pool)
 	sentinelSvc := service.NewSentinelService(pool)
 	checkpointSvc := service.NewCheckpointService(pool)
@@ -125,6 +130,8 @@ func NewServiceBundle(pool *pgxpool.Pool) *ServiceBundle {
 		Patterns:      patternsSvc,
 		Crystallize:   crystallizeSvc,
 		Slot:          slotSvc,
+		Profile:       profileSvc,
+		ContextHooks:  ctxHookMgr,
 		Pool:          pool,
 	}
 }

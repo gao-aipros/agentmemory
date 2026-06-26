@@ -26,6 +26,7 @@ type SessionEndHandler struct {
 	summarizer   *SummarizationService
 	consolidator *ConsolidationService
 	reflector    *ReflectionService
+	profileSvc   *ProfileService
 	wg           *sync.WaitGroup
 	sem          *semaphore.Weighted
 }
@@ -37,6 +38,7 @@ func NewSessionEndHandler(
 	summarizer *SummarizationService,
 	consolidator *ConsolidationService,
 	reflector *ReflectionService,
+	profileSvc *ProfileService,
 	wg *sync.WaitGroup,
 	sem *semaphore.Weighted,
 ) *SessionEndHandler {
@@ -46,6 +48,7 @@ func NewSessionEndHandler(
 		summarizer:   summarizer,
 		consolidator: consolidator,
 		reflector:    reflector,
+		profileSvc:   profileSvc,
 		wg:           wg,
 		sem:          sem,
 	}
