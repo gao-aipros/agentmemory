@@ -14,9 +14,10 @@ import (
 	"github.com/agentmemory/agentmemory/internal/store"
 )
 
-// GRAPH_EXTRACTION_TOKEN_BUDGET is the maximum total character length for
-// observation narratives in a single graph extraction prompt.
-const GRAPH_EXTRACTION_TOKEN_BUDGET = 3000
+// GRAPH_EXTRACTION_CHAR_BUDGET is the maximum total character length for
+// observation narratives in a single graph extraction prompt (~750 tokens at
+// 4 chars/token for English). This is a character budget, not a token budget.
+const GRAPH_EXTRACTION_CHAR_BUDGET = 3000
 
 // ObservationForExtraction holds the fields needed for graph extraction prompt building.
 type ObservationForExtraction struct {
@@ -109,6 +110,9 @@ func (s *GraphExtractionService) ExtractFromSession(ctx context.Context, session
 		})
 		allObsIDs = append(allObsIDs, co.ObservationIds...)
 	}
+	// Deduplicate observation IDs to prevent array bloat from
+	// repeated extraction of the same session.
+	allObsIDs = dedupStringSlice(allObsIDs)
 
 	// 3. Build the LLM prompt.
 	prompt := buildGraphExtractionPrompt(obsForExtraction)
@@ -119,8 +123,10 @@ func (s *GraphExtractionService) ExtractFromSession(ctx context.Context, session
 		return 0, 0, fmt.Errorf("LLM call failed: %w", err)
 	}
 
-	// 5. Parse the LLM response.
-	entities, relationships, err := ParseExtractionResponse(response)
+	// 5. Parse the LLM response. Strip markdown code fences first
+	// because some LLMs wrap JSON in ```json ... ``` despite
+	// instructions to output raw JSON only.
+	entities, relationships, err := ParseExtractionResponse(stripMarkdownFences(response))
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to parse extraction response: %w", err)
 	}
@@ -217,8 +223,8 @@ Observations:
 
 	// Determine proportional truncation factor.
 	factor := 1.0
-	if totalLen > GRAPH_EXTRACTION_TOKEN_BUDGET {
-		factor = float64(GRAPH_EXTRACTION_TOKEN_BUDGET) / float64(totalLen)
+	if totalLen > GRAPH_EXTRACTION_CHAR_BUDGET {
+		factor = float64(GRAPH_EXTRACTION_CHAR_BUDGET) / float64(totalLen)
 	}
 
 	// Write each observation, optionally truncating narrative.
@@ -307,6 +313,24 @@ func ParseExtractionResponse(response string) ([]ParsedEntity, []ParsedRelations
 	return entities, relationships, nil
 }
 
+// stripMarkdownFences removes markdown code fences (```json ... ```)
+// that some LLMs wrap around JSON output despite instructions to output
+// raw JSON only. Returns the inner content if fences are detected, or the
+// original string unchanged if no fences are present.
+func stripMarkdownFences(s string) string {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "```") {
+		// Find the first newline after the opening fence.
+		if idx := strings.IndexByte(s, '\n'); idx != -1 {
+			s = s[idx+1:]
+		}
+	}
+	if strings.HasSuffix(s, "```") {
+		s = s[:len(s)-3]
+	}
+	return strings.TrimSpace(s)
+}
+
 // computeEntityID computes a stable, deterministic ID for an entity based on
 // its label and node type. Uses the first 16 bytes of SHA-256, hex-encoded.
 func computeEntityID(label, nodeType string) string {
@@ -321,4 +345,22 @@ func prefixEdgeType(edgeType string) string {
 		return edgeType
 	}
 	return "llm:" + edgeType
+}
+
+// dedupStringSlice returns a new slice with duplicate elements removed,
+// preserving order. Used to prevent observation ID array bloat when
+// the same session is extracted multiple times.
+func dedupStringSlice(s []string) []string {
+	if len(s) <= 1 {
+		return s
+	}
+	seen := make(map[string]bool, len(s))
+	result := make([]string, 0, len(s))
+	for _, v := range s {
+		if !seen[v] {
+			seen[v] = true
+			result = append(result, v)
+		}
+	}
+	return result
 }

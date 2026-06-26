@@ -178,6 +178,45 @@ func TestEdgeTypePrefix(t *testing.T) {
 	})
 }
 
+// TestStripMarkdownFences verifies that stripMarkdownFences correctly
+// removes markdown code fences that some LLMs wrap around JSON output.
+func TestStripMarkdownFences(t *testing.T) {
+	t.Run("plain JSON unchanged", func(t *testing.T) {
+		input := `{"entities":[],"relationships":[]}`
+		result := stripMarkdownFences(input)
+		assert.Equal(t, input, result)
+	})
+	t.Run("json code fence stripped", func(t *testing.T) {
+		result := stripMarkdownFences("```json\n{\"entities\":[],\"relationships\":[]}\n```")
+		assert.Equal(t, `{"entities":[],"relationships":[]}`, result)
+	})
+	t.Run("generic code fence stripped", func(t *testing.T) {
+		result := stripMarkdownFences("```\n{\"entities\":[],\"relationships\":[]}\n```")
+		assert.Equal(t, `{"entities":[],"relationships":[]}`, result)
+	})
+	t.Run("whitespace tolerant", func(t *testing.T) {
+		result := stripMarkdownFences("  ```json\n{\"x\":1}\n```  ")
+		assert.Equal(t, `{"x":1}`, result)
+	})
+}
+
+// TestDedupStringSlice verifies that dedupStringSlice removes duplicates
+// while preserving order.
+func TestDedupStringSlice(t *testing.T) {
+	t.Run("empty slice", func(t *testing.T) {
+		result := dedupStringSlice(nil)
+		assert.Nil(t, result)
+	})
+	t.Run("no duplicates", func(t *testing.T) {
+		result := dedupStringSlice([]string{"a", "b", "c"})
+		assert.Equal(t, []string{"a", "b", "c"}, result)
+	})
+	t.Run("duplicates removed", func(t *testing.T) {
+		result := dedupStringSlice([]string{"a", "b", "a", "c", "b"})
+		assert.Equal(t, []string{"a", "b", "c"}, result)
+	})
+}
+
 // ---------------------------------------------------------------------------
 // mockExtractionModel implements llms.Model for testing graph extraction.
 type mockExtractionModel struct {
