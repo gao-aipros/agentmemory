@@ -75,11 +75,9 @@ func registerMemoryInjectContext(mcpServer *mcp.Server, svc *ServiceBundle) {
 			}, nil
 		}
 
-		// Wrap context text in XML tags (FR-005)
+		// Context text is already wrapped in <agentmemory-context> by ApplyBudget
+		// in the service layer — no additional wrapping needed.
 		contextText := result.ContextText
-		if contextText != "" {
-			contextText = fmt.Sprintf(`<agentmemory-context version="2">%s</agentmemory-context>`, contextText)
-		}
 
 		return jsonResult(map[string]interface{}{
 			"hook_type":    string(result.HookType),

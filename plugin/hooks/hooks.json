@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "tool": "memory_inject_context",
+        "args": {
+          "trigger": "session_start"
+        }
+      }
+    ]
+  }
+}
