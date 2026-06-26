@@ -280,8 +280,8 @@ func RegisterAllTools(mcpServer *mcp.Server, svc *ServiceBundle) {
 	registerMemoryFacetTag(mcpServer, svc)
 	registerMemoryVisionSearch(mcpServer, svc)
 
-		// Context Injection Hook (003-mcp-context-injection)
-		registerMemoryInjectContext(mcpServer, svc)
+	// Context Injection Hook (003-mcp-context-injection)
+	registerMemoryInjectContext(mcpServer, svc)
 
 	// v1 Service Tools (T144-T154) — stubs
 	registerMemorySlotCreate(mcpServer, svc)
