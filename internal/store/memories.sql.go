@@ -18,6 +18,43 @@ func (q *Queries) DeleteMemory(ctx context.Context, id string) error {
 	return err
 }
 
+const getMemoriesByIDs = `-- name: GetMemoriesByIDs :many
+SELECT id, owner_type, owner_user_id, owner_team_id, visibility, content, concepts, source, confidence, created_at, deleted, reflected FROM memories WHERE id = ANY($1::text[])
+`
+
+func (q *Queries) GetMemoriesByIDs(ctx context.Context, dollar_1 []string) ([]Memory, error) {
+	rows, err := q.db.Query(ctx, getMemoriesByIDs, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Memory
+	for rows.Next() {
+		var i Memory
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerType,
+			&i.OwnerUserID,
+			&i.OwnerTeamID,
+			&i.Visibility,
+			&i.Content,
+			&i.Concepts,
+			&i.Source,
+			&i.Confidence,
+			&i.CreatedAt,
+			&i.Deleted,
+			&i.Reflected,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMemory = `-- name: GetMemory :one
 SELECT id, owner_type, owner_user_id, owner_team_id, visibility, content, concepts, source, confidence, created_at, deleted, reflected FROM memories WHERE id = $1
 `

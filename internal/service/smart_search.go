@@ -52,9 +52,10 @@ func (s *SmartSearchService) Search(ctx context.Context, query string, limit int
 	out.Compact = make([]CompactResult, len(results))
 	for i, r := range results {
 		out.Compact[i] = CompactResult{
-			ID:    r.ID,
-			Title: r.Title,
-			Score: r.CombinedScore,
+			ID:     r.ID,
+			Title:  r.Title,
+			Score:  r.CombinedScore,
+			Source: r.Source,
 		}
 	}
 

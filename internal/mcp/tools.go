@@ -42,6 +42,9 @@ type ServiceBundle struct {
 	Profile       *service.ProfileService
 	ContextHooks  *service.ContextHookManager
 
+	// Memory operations
+	Memory *service.MemoryService
+
 	// v1 Service Tools (Task #24)
 	Signal      *service.SignalService
 	Sentinel    *service.SentinelService
@@ -83,6 +86,7 @@ func NewServiceBundle(pool *pgxpool.Pool) *ServiceBundle {
 	consolidator := service.NewConsolidationService(pool, llmSvc, mode)
 	reflector := service.NewReflectionService(pool, 3600, llmSvc)
 	profileSvc := service.NewProfileService(pool, llmSvc.Model())
+	memorySvc := service.NewMemoryService(pool, embedSvc)
 	slotSvc := service.NewSlotService(pool)
 	ctxSvc := service.NewContextService(pool, embedSvc, slotSvc)
 	ctxGate := service.NewContextGate()
@@ -133,6 +137,7 @@ func NewServiceBundle(pool *pgxpool.Pool) *ServiceBundle {
 		Crystallize:   crystallizeSvc,
 		Slot:          slotSvc,
 		Profile:       profileSvc,
+		Memory:        memorySvc,
 		ContextHooks:  ctxHookMgr,
 		Pool:          pool,
 	}
@@ -410,18 +415,10 @@ func registerMemorySave(mcpServer *mcp.Server, svc *ServiceBundle) {
 			return nil, err
 		}
 
-		// Create memory entry directly (bypasses observation pipeline — explicit saves
-		// go straight to long-term memory, not through the observe→compress chain)
-		queries := store.New(svc.Pool)
-		mem, err := queries.InsertMemory(ctx, store.InsertMemoryParams{
-			ID:         uuid.New().String(),
-			OwnerType:  "user",
-			Visibility: "private",
-			Content:    a.Content,
-			Concepts:   a.Concepts,
-			Source:     "manual_save",
-			Confidence: 0.8,
-		})
+		userID := auth.GetUserIDFromContext(ctx)
+
+		// Use MemoryService to save the memory with embedding
+		mem, err := svc.Memory.SaveMemory(ctx, a.Content, a.Concepts, userID)
 		if err != nil {
 			return &mcp.CallToolResult{
 				IsError: true,
@@ -554,12 +551,18 @@ func registerMemoryForget(mcpServer *mcp.Server, svc *ServiceBundle) {
 
 		deleted := []string{}
 		failed := []map[string]string{}
+		queries := store.New(svc.Pool)
 		for _, id := range a.ObservationIDs {
+			// Evict observation (if it is one)
 			if err := svc.Eviction.EvictObservation(ctx, id); err != nil {
 				failed = append(failed, map[string]string{"id": id, "error": err.Error()})
 			} else {
 				deleted = append(deleted, id)
 			}
+
+			// Also clean up memory embedding (no-op if not a memory)
+			_ = queries.DeleteMemoryEmbedding(ctx, id)
+			_ = queries.DeleteMemory(ctx, id)
 		}
 
 		return jsonResult(map[string]interface{}{
@@ -1279,7 +1282,6 @@ func registerMemoryNext(mcpServer *mcp.Server, svc *ServiceBundle) {
 	})
 }
 
-
 func registerMemoryCrystallize(mcpServer *mcp.Server, svc *ServiceBundle) {
 	type args struct {
 		ActionIDs string `json:"action_ids"`
@@ -1321,12 +1323,12 @@ func registerMemoryCrystallize(mcpServer *mcp.Server, svc *ServiceBundle) {
 		}
 
 		return jsonResult(map[string]interface{}{
-			"crystal_id":    crystal.ID,
-			"narrative":     crystal.Narrative,
-			"key_outcomes":  crystal.KeyOutcomes,
+			"crystal_id":     crystal.ID,
+			"narrative":      crystal.Narrative,
+			"key_outcomes":   crystal.KeyOutcomes,
 			"files_affected": crystal.FilesAffected,
-			"lessons":       crystal.Lessons,
-			"status":        "crystallized",
+			"lessons":        crystal.Lessons,
+			"status":         "crystallized",
 		})
 	})
 }
@@ -2282,10 +2284,10 @@ func registerMemoryRoutineRun(mcpServer *mcp.Server, svc *ServiceBundle) {
 		}
 
 		return jsonResult(map[string]interface{}{
-			"run_id":      run.ID,
-			"routine_id":  run.RoutineID,
+			"run_id":       run.ID,
+			"routine_id":   run.RoutineID,
 			"action_count": len(run.Actions),
-			"status":      "running",
+			"status":       "running",
 		})
 	})
 }
@@ -2368,7 +2370,7 @@ func registerMemoryFileHistory(mcpServer *mcp.Server, svc *ServiceBundle) {
 		}
 
 		return jsonResult(map[string]interface{}{
-			"files":  fileList,
+			"files":   fileList,
 			"history": entries,
 			"count":   len(entries),
 		})

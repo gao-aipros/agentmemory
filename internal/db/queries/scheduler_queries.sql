@@ -27,4 +27,4 @@ WHERE NOT EXISTS (
 
 -- name: HasUnreflectedMemories :one
 SELECT COUNT(*) > 0 AS has_unreflected FROM memories
-WHERE reflected = false AND deleted = false;
+WHERE reflected = false AND source = 'consolidation' AND deleted = false;

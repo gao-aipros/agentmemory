@@ -124,6 +124,14 @@ type Memory struct {
 	Reflected   bool
 }
 
+type MemoryEmbedding struct {
+	ID        string
+	MemoryID  string
+	Embedding *pgvector.Vector
+	Model     string
+	CreatedAt pgtype.Timestamptz
+}
+
 type Observation struct {
 	ID           string
 	SessionID    string
