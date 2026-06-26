@@ -70,8 +70,8 @@ func TestContextInjectInvalidTrigger(t *testing.T) {
 		return
 	}
 
-	// Fallback: verify the tool is registered and callable
-	t.Logf("Tool returned result (might be handled differently by go-sdk)")
+	// Fail loudly if an invalid trigger was unexpectedly accepted (regression catch)
+	t.Fatalf("unexpected success: invalid trigger 'invalid_trigger' was accepted (should have been rejected)")
 }
 
 // TestContextInjectInvalidTriggerRejected verifies the tool rejects
@@ -115,11 +115,9 @@ func TestContextInjectInvalidTriggerRejected(t *testing.T) {
 			// The tool should reject invalid triggers. The exact mechanism (error
 			// return vs IsError) depends on the go-sdk, but the tool must not
 			// silently succeed with invalid input.
-			if err != nil {
-				assert.Contains(t, err.Error(), "invalid trigger",
-					"error should mention invalid trigger for input %q", trigger)
-			}
-			// If no error is returned, the result should at minimum indicate a problem.
+			require.Error(t, err, "expected error for invalid trigger %q but got nil", trigger)
+			assert.Contains(t, err.Error(), "invalid trigger",
+				"error should mention invalid trigger for input %q", trigger)
 		})
 	}
 }
