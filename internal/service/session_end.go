@@ -19,24 +19,28 @@ type sessionEndSessioner interface {
 // SessionEndHandler orchestrates the end-of-session pipeline:
 // 1. Close session (update ended_at, status=ended)
 // 2. Trigger compression (via Scheduler, async)
-// 3. After compression: trigger full summarization (via Scheduler, async)
+// 3. Graph extraction (fire-and-forget, never blocks pipeline)
+// 4. After compression: trigger full summarization (via Scheduler, async)
 type SessionEndHandler struct {
 	sessionSvc   sessionEndSessioner
 	scheduler    *Scheduler
 	summarizer   *SummarizationService
 	consolidator *ConsolidationService
 	reflector    *ReflectionService
+	graphExtract *GraphExtractionService
 	wg           *sync.WaitGroup
 	sem          *semaphore.Weighted
 }
 
 // NewSessionEndHandler creates a new SessionEndHandler.
+// graphExtract is optional; pass nil to disable graph extraction.
 func NewSessionEndHandler(
 	sessionSvc *SessionService,
 	scheduler *Scheduler,
 	summarizer *SummarizationService,
 	consolidator *ConsolidationService,
 	reflector *ReflectionService,
+	graphExtract *GraphExtractionService,
 	wg *sync.WaitGroup,
 	sem *semaphore.Weighted,
 ) *SessionEndHandler {
@@ -46,6 +50,7 @@ func NewSessionEndHandler(
 		summarizer:   summarizer,
 		consolidator: consolidator,
 		reflector:    reflector,
+		graphExtract: graphExtract,
 		wg:           wg,
 		sem:          sem,
 	}
@@ -102,7 +107,7 @@ func (h *SessionEndHandler) Wait() {
 	h.wg.Wait()
 }
 
-// runPipeline executes the compress → summarize chain via the Scheduler.
+// runPipeline executes the compress → graph-extract → summarize chain via the Scheduler.
 // Consolidate and reflect are handled by the Scheduler's periodic tiers (US4).
 func (h *SessionEndHandler) runPipeline(sessionID string) {
 	defer func() {
@@ -125,6 +130,23 @@ func (h *SessionEndHandler) runPipeline(sessionID string) {
 		}
 	}
 
+	// Step 2.5: Graph extraction (fire-and-forget, never blocks pipeline)
+	if h.graphExtract != nil {
+		h.wg.Add(1)
+			go func() {
+				defer h.wg.Done()
+				defer func() {
+					if r := recover(); r != nil {
+						slog.Error("graph extraction goroutine panicked", "session_id", sessionID, "panic", r)
+					}
+				}()
+			bgCtx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel2()
+			if _, _, err := h.graphExtract.ExtractFromSession(bgCtx2, sessionID); err != nil {
+				slog.Warn("graph extraction failed", "session_id", sessionID, "error", err)
+			}
+		}()
+	}
 	// Step 3: Full summarization via Scheduler
 	if h.scheduler != nil {
 		slog.Info("starting session summarization", "session_id", sessionID)

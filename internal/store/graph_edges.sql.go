@@ -19,7 +19,7 @@ func (q *Queries) DeleteGraphEdge(ctx context.Context, id string) error {
 }
 
 const getGraphEdge = `-- name: GetGraphEdge :one
-SELECT id, from_node_id, to_node_id, edge_type, weight, created_at FROM graph_edges WHERE id = $1
+SELECT id, from_node_id, to_node_id, edge_type, weight, created_at, source_obs_ids FROM graph_edges WHERE id = $1
 `
 
 func (q *Queries) GetGraphEdge(ctx context.Context, id string) (GraphEdge, error) {
@@ -32,6 +32,7 @@ func (q *Queries) GetGraphEdge(ctx context.Context, id string) (GraphEdge, error
 		&i.EdgeType,
 		&i.Weight,
 		&i.CreatedAt,
+		&i.SourceObsIds,
 	)
 	return i, err
 }
@@ -39,7 +40,7 @@ func (q *Queries) GetGraphEdge(ctx context.Context, id string) (GraphEdge, error
 const insertGraphEdge = `-- name: InsertGraphEdge :one
 INSERT INTO graph_edges (id, from_node_id, to_node_id, edge_type, weight)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, from_node_id, to_node_id, edge_type, weight, created_at
+RETURNING id, from_node_id, to_node_id, edge_type, weight, created_at, source_obs_ids
 `
 
 type InsertGraphEdgeParams struct {
@@ -66,12 +67,13 @@ func (q *Queries) InsertGraphEdge(ctx context.Context, arg InsertGraphEdgeParams
 		&i.EdgeType,
 		&i.Weight,
 		&i.CreatedAt,
+		&i.SourceObsIds,
 	)
 	return i, err
 }
 
 const listGraphEdgesFrom = `-- name: ListGraphEdgesFrom :many
-SELECT id, from_node_id, to_node_id, edge_type, weight, created_at FROM graph_edges WHERE from_node_id = $1 ORDER BY created_at DESC
+SELECT id, from_node_id, to_node_id, edge_type, weight, created_at, source_obs_ids FROM graph_edges WHERE from_node_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListGraphEdgesFrom(ctx context.Context, fromNodeID string) ([]GraphEdge, error) {
@@ -90,6 +92,7 @@ func (q *Queries) ListGraphEdgesFrom(ctx context.Context, fromNodeID string) ([]
 			&i.EdgeType,
 			&i.Weight,
 			&i.CreatedAt,
+			&i.SourceObsIds,
 		); err != nil {
 			return nil, err
 		}
@@ -102,7 +105,7 @@ func (q *Queries) ListGraphEdgesFrom(ctx context.Context, fromNodeID string) ([]
 }
 
 const listGraphEdgesTo = `-- name: ListGraphEdgesTo :many
-SELECT id, from_node_id, to_node_id, edge_type, weight, created_at FROM graph_edges WHERE to_node_id = $1 ORDER BY created_at DESC
+SELECT id, from_node_id, to_node_id, edge_type, weight, created_at, source_obs_ids FROM graph_edges WHERE to_node_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListGraphEdgesTo(ctx context.Context, toNodeID string) ([]GraphEdge, error) {
@@ -121,6 +124,7 @@ func (q *Queries) ListGraphEdgesTo(ctx context.Context, toNodeID string) ([]Grap
 			&i.EdgeType,
 			&i.Weight,
 			&i.CreatedAt,
+			&i.SourceObsIds,
 		); err != nil {
 			return nil, err
 		}
@@ -130,4 +134,44 @@ func (q *Queries) ListGraphEdgesTo(ctx context.Context, toNodeID string) ([]Grap
 		return nil, err
 	}
 	return items, nil
+}
+
+const upsertGraphEdge = `-- name: UpsertGraphEdge :one
+INSERT INTO graph_edges (id, from_node_id, to_node_id, edge_type, weight, source_obs_ids)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (from_node_id, to_node_id, edge_type) DO UPDATE SET
+    weight = (graph_edges.weight + EXCLUDED.weight) / 2.0,
+    source_obs_ids = graph_edges.source_obs_ids || EXCLUDED.source_obs_ids
+RETURNING id, from_node_id, to_node_id, edge_type, weight, created_at, source_obs_ids
+`
+
+type UpsertGraphEdgeParams struct {
+	ID           string
+	FromNodeID   string
+	ToNodeID     string
+	EdgeType     string
+	Weight       float64
+	SourceObsIds []string
+}
+
+func (q *Queries) UpsertGraphEdge(ctx context.Context, arg UpsertGraphEdgeParams) (GraphEdge, error) {
+	row := q.db.QueryRow(ctx, upsertGraphEdge,
+		arg.ID,
+		arg.FromNodeID,
+		arg.ToNodeID,
+		arg.EdgeType,
+		arg.Weight,
+		arg.SourceObsIds,
+	)
+	var i GraphEdge
+	err := row.Scan(
+		&i.ID,
+		&i.FromNodeID,
+		&i.ToNodeID,
+		&i.EdgeType,
+		&i.Weight,
+		&i.CreatedAt,
+		&i.SourceObsIds,
+	)
+	return i, err
 }
