@@ -131,6 +131,7 @@ func TestMCPToolRegistration(t *testing.T) {
 		"memory_file_history",
 		"memory_lease",
 		"memory_insight_list",
+		"memory_insight_search",
 		"memory_team_share",
 		"memory_claude_bridge_sync",
 	}

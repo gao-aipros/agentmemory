@@ -57,6 +57,12 @@ func (m *MockLLMProvider) Call(ctx context.Context, prompt string, options ...ll
 		return string(b), nil
 	}
 
+	// Reflection prompt (pattern detection / insight synthesis)
+	// ParseReflectResponse expects XML: <insight confidence="..." title="...">content</insight>
+	if contains(prompt, "Synthesize higher-order insights") {
+		return `<insight confidence="0.7" title="Shared test pattern detected">Multiple memories reference the shared-test-concept pattern, suggesting a recurring approach.</insight>`, nil
+	}
+
 	return "", fmt.Errorf("mock LLM: unrecognized prompt pattern")
 }
 

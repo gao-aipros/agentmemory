@@ -90,8 +90,9 @@ var allMCPToolNames = []string{
 	"memory_file_history",
 	"memory_lease",
 
-	// Additional Tools (3)
+	// Additional Tools (4)
 	"memory_insight_list",
+	"memory_insight_search",
 	"memory_team_share",
 	"memory_claude_bridge_sync",
 }

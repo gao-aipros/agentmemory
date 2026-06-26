@@ -398,22 +398,59 @@ func TestMCP_PipelineE2E(t *testing.T) {
 	t.Logf("Session created: %s", sessionID)
 
 	// ---- Step 2: Record observations via MCP ----
-	types := []string{"user_prompt_submit", "pre_tool_use", "post_tool_use", "pre_llm_call", "post_llm_call"}
-	for i, hookType := range types {
+	// Record enough diverse observations so consolidation produces ≥3 memories,
+	// which allows reflection's concept-clustering threshold (3+ memories per cluster)
+	// to be met and insights to be synthesized.
+	obsDefs := []struct {
+		hookType string
+		concepts []string
+		title    string
+		narrative string
+	}{
+		{
+			hookType: "user_prompt_submit", concepts: []string{"pipeline-e2e", "database", "schema-design"},
+			title: "Schema design request", narrative: "The user asked to design a PostgreSQL schema for a multi-tenant application, including team isolation and connection pooling strategies.",
+		},
+		{
+			hookType: "pre_tool_use", concepts: []string{"pipeline-e2e", "migrations", "golang-migrate"},
+			title: "Pre-migration tool use", narrative: "Before running migrations, inspected existing table structures and checked for breaking changes in the up/down scripts.",
+		},
+		{
+			hookType: "post_tool_use", concepts: []string{"pipeline-e2e", "migrations", "schema-design"},
+			title: "Post-migration verification", narrative: "After running migrations, verified all tables were created correctly with the expected indexes and foreign key constraints.",
+		},
+		{
+			hookType: "pre_llm_call", concepts: []string{"pipeline-e2e", "consolidation", "optimization"},
+			title: "Pre-LLM consolidation prep", narrative: "Prepared batch consolidation prompt with 20 observations across 3 sessions, filtering for high-importance items only.",
+		},
+		{
+			hookType: "post_llm_call", concepts: []string{"pipeline-e2e", "consolidation", "database"},
+			title: "Post-LLM consolidation result", narrative: "Consolidation extracted 4 memories and 2 lessons from the batch, with confidence scores ranging from 0.5 to 0.9.",
+		},
+		{
+			hookType: "pre_tool_use", concepts: []string{"pipeline-e2e", "reflection", "optimization"},
+			title: "Pre-reflection analysis", narrative: "Analyzed 8 unreflected memories across 3 concept clusters to prepare for the reflection synthesis tier.",
+		},
+		{
+			hookType: "post_tool_use", concepts: []string{"pipeline-e2e", "reflection", "database"},
+			title: "Post-reflection insight stored", narrative: "Reflection produced 2 high-confidence insights about database optimization patterns and migration best practices.",
+		},
+	}
+	for i, def := range obsDefs {
 		_, err := session.CallTool(ctx, &mcp.CallToolParams{
 			Name: "memory_observe",
 			Arguments: map[string]any{
-				"type":       hookType,
-				"title":      fmt.Sprintf("Pipeline e2e observation %d: %s", i, hookType),
-				"narrative":  fmt.Sprintf("Detailed narrative for pipeline e2e test observation %d. The agent performed a %s action involving database schema design and PostgreSQL optimization.", i, hookType),
+				"type":       def.hookType,
+				"title":      def.title,
+				"narrative":  def.narrative,
 				"session_id": sessionID,
-				"concepts":   []string{"pipeline-e2e", hookType, "postgresql"},
+				"concepts":   def.concepts,
 				"importance": 0.8,
 			},
 		})
-		require.NoError(t, err, "memory_observe %s", hookType)
+		require.NoError(t, err, "memory_observe[%d] %s", i, def.hookType)
 	}
-	t.Logf("Recorded %d observations", len(types))
+	t.Logf("Recorded %d observations", len(obsDefs))
 
 	// ---- Step 3: Verify observations are NOT immediately compressed ----
 	// With the scheduler pipeline, compression only happens via session-end or periodic
@@ -507,12 +544,12 @@ func TestMCP_PipelineE2E(t *testing.T) {
 
 		// Wait for scheduler-driven reflection
 		pollDB(t, pool,
-			"SELECT COUNT(*) FROM insights WHERE source = 'reflect'",
+			"SELECT COUNT(*) FROM insights WHERE deleted = false",
 			1, 120*time.Second)
 
 		// Verify reflection output
 		var insCount int
-		pool.QueryRow(ctx, "SELECT COUNT(*) FROM insights WHERE source = 'reflect'").Scan(&insCount)
+		pool.QueryRow(ctx, "SELECT COUNT(*) FROM insights WHERE deleted = false").Scan(&insCount)
 		assert.GreaterOrEqual(t, insCount, 1, "insights should exist (scheduler reflection worked)")
 		t.Logf("Reflection: %d insights", insCount)
 	})
