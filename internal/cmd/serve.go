@@ -96,12 +96,13 @@ Use --migrate-on-startup to auto-apply pending migrations.`,
 			// Start pipeline scheduler (in-process, goroutine-based)
 			schedulerCtx, schedulerCancel := context.WithCancel(context.Background())
 			defer schedulerCancel()
+			profileSvc := service.NewProfileService(pool, bundle.LLM.Model())
 			scheduler := service.NewScheduler(pool, bundle.LLM, bundle.Embedding, service.SchedulerIntervals{
 				Compression:   cfg.CompressionInterval,
 				Summarization: cfg.SummarizationInterval,
 				Consolidation: cfg.ConsolidationInterval,
 				Reflection:    cfg.ReflectionInterval,
-			})
+			}, profileSvc)
 			scheduler.Start(schedulerCtx)
 
 			// Create HTTP router with the shared bundle and config

@@ -37,6 +37,7 @@ type Scheduler struct {
 
 	consolidationSvc *ConsolidationService
 	reflectionSvc    *ReflectionService
+	profileSvc       *ProfileService
 
 	// Overridable process functions (default to private methods, injected for testing).
 	CompressionFunc   SchedulingFunc
@@ -46,7 +47,7 @@ type Scheduler struct {
 }
 
 // NewScheduler creates a new Scheduler with the given dependencies and intervals.
-func NewScheduler(pool *pgxpool.Pool, llm *LLMService, embed *EmbeddingService, intervals SchedulerIntervals) *Scheduler {
+func NewScheduler(pool *pgxpool.Pool, llm *LLMService, embed *EmbeddingService, intervals SchedulerIntervals, profileSvc *ProfileService) *Scheduler {
 	s := &Scheduler{
 		pool:             pool,
 		llm:              llm,
@@ -55,6 +56,7 @@ func NewScheduler(pool *pgxpool.Pool, llm *LLMService, embed *EmbeddingService, 
 		intervals:        intervals,
 		consolidationSvc: NewConsolidationService(pool, llm, DefaultConsolidationMode("member_choice", false)),
 		reflectionSvc:    NewReflectionService(pool, 3600, llm),
+		profileSvc:       profileSvc,
 	}
 	// Wire default process functions to the private implementations.
 	s.CompressionFunc = s.ProcessCompression
@@ -441,6 +443,22 @@ func (s *Scheduler) ProcessConsolidation(ctx context.Context) error {
 				"error", err,
 			)
 			continue
+		}
+
+		// After successful consolidation, update the project profile so that
+		// concept frequencies and file references reflect the latest observations.
+		if s.profileSvc != nil {
+			// TODO: Extract actual project slug from session/memories when the schema
+			// supports session-to-project mapping. Currently uses sessionID as the slug;
+			// ListObservationsByProject ignores the parameter and returns all observations
+			// until the schema supports project-scoped filtering.
+			if err := s.profileSvc.UpdateProfile(ctx, sessionID); err != nil {
+				slog.Warn("consolidation: profile update failed",
+					"session_id", sessionID,
+					"tier", "Tier2(consolidate)",
+					"error", err,
+				)
+			}
 		}
 	}
 	return nil

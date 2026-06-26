@@ -173,7 +173,12 @@ func ApplyBudget(assembled *AssembledContext, budget ContextBudget) string {
 
 	// Wrap in XML context tag (matching v0 pattern).
 	// XML wrapper is structural framing — not counted against the content budget.
-	result = "<agentmemory-context version=\"2\">\n" + strings.TrimSpace(result) + "\n</agentmemory-context>"
+	body := strings.TrimSpace(result)
+	result = "<agentmemory-context version=\"2\">\n"
+	if assembled != nil && assembled.ProfileSection != "" {
+		result += assembled.ProfileSection + "\n"
+	}
+	result += body + "\n</agentmemory-context>"
 
 	return result
 }
@@ -183,10 +188,6 @@ func ApplyBudget(assembled *AssembledContext, budget ContextBudget) string {
 func truncateToTokens(text string, maxTokens int) string {
 	if maxTokens <= 0 || text == "" {
 		return ""
-	}
-
-	if maxTokens < 1 {
-		maxTokens = 1
 	}
 
 	// 4 chars per token is the heuristic used by EstimateTokens

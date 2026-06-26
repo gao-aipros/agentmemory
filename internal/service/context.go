@@ -22,7 +22,7 @@ type contextQuerier interface {
 	GetObservationsByIDs(ctx context.Context, ids []string) ([]store.Observation, error)
 }
 
-// AssembledContext holds the raw content from all 5 context source buckets
+// AssembledContext holds the raw content from all context source buckets
 // before budget application and formatting.
 type AssembledContext struct {
 	Graph         string
@@ -30,6 +30,9 @@ type AssembledContext struct {
 	Observations  string
 	Recap         string
 	WorkingMemory string
+	// ProfileSection is optional pre-formatted project profile markdown.
+	// It is inserted after the XML wrapper opening tag, before other context.
+	ProfileSection string
 }
 
 // ContextService assembles context from 5 source buckets for injection
