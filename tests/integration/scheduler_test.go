@@ -231,7 +231,7 @@ func TestReflectionViaScheduler(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		memID := uuid.New().String()
 		_, err := db.Pool.Exec(ctx, `INSERT INTO memories (id, owner_type, owner_user_id, visibility, content, concepts, source, confidence, created_at)
-			VALUES ($1, 'user', $2, 'private', $3, $4, 'test', 0.5, now())`,
+			VALUES ($1, 'user', $2, 'private', $3, $4, 'consolidation', 0.5, now())`,
 			memID, userID, "Memory for reflection test "+formatTestInt(i), []string{concept})
 		require.NoError(t, err)
 	}
@@ -244,11 +244,12 @@ func TestReflectionViaScheduler(t *testing.T) {
 	err = scheduler.ProcessReflection(ctx)
 	require.NoError(t, err, "processReflection should succeed")
 
-	// Verify insights created with source='reflect'
+	// Verify insights created (the new schema drops the 'source' column; reflection
+	// is the only pipeline that creates insights, so any non-deleted row counts).
 	var insCount int
-	err = db.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM insights WHERE source = 'reflect'").Scan(&insCount)
+	err = db.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM insights WHERE deleted = false").Scan(&insCount)
 	require.NoError(t, err)
-	assert.GreaterOrEqual(t, insCount, 1, "reflection should create at least one insight with source='reflect'")
+	assert.GreaterOrEqual(t, insCount, 1, "reflection should create at least one insight")
 }
 
 // TestSchedulerRecovery verifies that the scheduler picks up sessions needing

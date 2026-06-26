@@ -645,6 +645,9 @@ func (s *ProfileService) UpdateProfile(ctx context.Context, projectSlug string) 
 	// --- Convention extraction (FR-005) ---
 
 	conventions := s.extractConventions(ctx, observations)
+	if conventions == nil {
+		conventions = []string{}
+	}
 
 	// --- Upsert profile ---
 

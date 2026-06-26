@@ -403,7 +403,9 @@ func (s *ReflectionService) RunReflection(ctx context.Context, project string, m
 				Confidence:           insight.Confidence,
 				SourceConceptCluster: concepts,
 				SourceMemoryIds:      memoryIDs,
+				SourceLessonIds:      []string{},
 				Project:              projectPtr,
+				Tags:                 []string{},
 			}); err != nil {
 				slog.Warn("failed to persist insight", "error", err)
 				continue
