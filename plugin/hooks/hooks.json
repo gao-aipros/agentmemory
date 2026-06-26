@@ -7,6 +7,15 @@
           "trigger": "session_start"
         }
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "tool": "memory_inject_context",
+        "args": {
+          "trigger": "pre_tool_use"
+        }
+      }
     ]
   }
 }
