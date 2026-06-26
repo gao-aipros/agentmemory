@@ -111,6 +111,7 @@ func TestMCPToolRegistration(t *testing.T) {
 		"memory_facet_query",
 		"memory_facet_tag",
 		"memory_vision_search",
+		"memory_inject_context",
 
 		// v1 Service Tools
 		"memory_slot_create",

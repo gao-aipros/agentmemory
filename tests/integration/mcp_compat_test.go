@@ -67,7 +67,9 @@ var allMCPToolNames = []string{
 	"memory_patterns",
 	"memory_facet_query",
 
-	// v1 Service Tools (14)
+	"memory_inject_context",
+
+	// v1 Service Tools (15)
 	"memory_facet_tag",
 	"memory_vision_search",
 	"memory_slot_create",

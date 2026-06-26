@@ -1,0 +1,31 @@
+{
+  "_comment": "agentmemory Claude Code hook configuration — maps lifecycle events to MCP context injection",
+  "hooks": {
+    "SessionStart": [
+      {
+        "tool": "memory_inject_context",
+        "args": {
+          "trigger": "session_start"
+        }
+      }
+    ],
+    "PreToolUse": [
+      {
+        "_comment": "Note: file_paths cannot be passed dynamically via Claude Code hooks (static args only). The tool will return skipped when file_paths is absent. For file-specific context, call memory_inject_context directly with trigger=pre_tool_use and file_paths=[...].",
+        "matcher": "Edit|Write",
+        "tool": "memory_inject_context",
+        "args": {
+          "trigger": "pre_tool_use"
+        }
+      }
+    ],
+    "PreCompact": [
+      {
+        "tool": "memory_inject_context",
+        "args": {
+          "trigger": "pre_compact"
+        }
+      }
+    ]
+  }
+}
