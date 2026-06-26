@@ -66,6 +66,13 @@ func registerMemoryInjectContext(mcpServer *mcp.Server, svc *ServiceBundle) {
 			result = svc.ContextHooks.TriggerPreToolUse(ctx, userID, a.FilePaths)
 		case service.ContextHookPreCompact:
 			result = svc.ContextHooks.TriggerPreCompact(ctx, userID)
+		default:
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: fmt.Sprintf("unhandled hook type: %s — this is a bug, please report", hookType)},
+				},
+			}, nil
 		}
 
 		// Wrap context text in XML tags (FR-005)
