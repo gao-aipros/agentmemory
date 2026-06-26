@@ -54,13 +54,13 @@ func TestSessionEndPipelineWithScheduler(t *testing.T) {
 
 	// Set up scheduler and session end handler
 	sessionSvc := service.NewSessionService(db.Pool)
-	scheduler := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{})
+	scheduler := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{}, nil)
 	summarizer := service.NewSummarizationService(db.Pool, llmSvc)
 	mode := service.DefaultConsolidationMode("member_choice", false)
 	mode.OwnerUserID = userID
 	consolidator := service.NewConsolidationService(db.Pool, llmSvc, mode)
 	reflector := service.NewReflectionService(db.Pool, 3600, llmSvc)
-	sessionEndH := service.NewSessionEndHandler(sessionSvc, scheduler, summarizer, consolidator, reflector, &sync.WaitGroup{}, semaphore.NewWeighted(20))
+	sessionEndH := service.NewSessionEndHandler(sessionSvc, scheduler, summarizer, consolidator, reflector, nil, nil, &sync.WaitGroup{}, semaphore.NewWeighted(20))
 
 	// End the session — triggers compress + summarize via scheduler
 	err = sessionEndH.HandleSessionEnd(ctx, sessionID)
@@ -124,12 +124,12 @@ func TestSessionEndPipelineWithoutObservations(t *testing.T) {
 	llmSvc := NewMockLLMService()
 	embedSvc := service.NewEmbeddingServiceWithEmbedder(nil)
 	sessionSvc := service.NewSessionService(db.Pool)
-	scheduler := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{})
+	scheduler := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{}, nil)
 	summarizer := service.NewSummarizationService(db.Pool, llmSvc)
 	mode := service.DefaultConsolidationMode("member_choice", false)
 	consolidator := service.NewConsolidationService(db.Pool, llmSvc, mode)
 	reflector := service.NewReflectionService(db.Pool, 3600, llmSvc)
-	sessionEndH := service.NewSessionEndHandler(sessionSvc, scheduler, summarizer, consolidator, reflector, &sync.WaitGroup{}, semaphore.NewWeighted(20))
+	sessionEndH := service.NewSessionEndHandler(sessionSvc, scheduler, summarizer, consolidator, reflector, nil, nil, &sync.WaitGroup{}, semaphore.NewWeighted(20))
 
 	// End session — should handle empty observations gracefully
 	err = sessionEndH.HandleSessionEnd(ctx, sessionID)
@@ -180,7 +180,7 @@ func TestConsolidationViaScheduler(t *testing.T) {
 	}
 
 	// Compress and summarize to create the session_summary needed for consolidation
-	scheduler := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{})
+	scheduler := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{}, nil)
 	err = scheduler.CompressSessionNow(ctx, sessionID)
 	require.NoError(t, err, "CompressSessionNow should succeed")
 
@@ -239,7 +239,7 @@ func TestReflectionViaScheduler(t *testing.T) {
 	// Create scheduler and call processReflection directly
 	llmSvc := NewMockLLMService()
 	embedSvc := service.NewEmbeddingServiceWithEmbedder(nil)
-	scheduler := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{})
+	scheduler := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{}, nil)
 
 	err = scheduler.ProcessReflection(ctx)
 	require.NoError(t, err, "processReflection should succeed")
@@ -290,7 +290,7 @@ func TestSchedulerRecovery(t *testing.T) {
 	}
 
 	// Run processCompression — should catch active sessions with uncompressed observations
-	scheduler := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{})
+	scheduler := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{}, nil)
 	err = scheduler.ProcessCompression(ctx)
 	require.NoError(t, err)
 
@@ -357,7 +357,7 @@ func TestCompressionIdempotency(t *testing.T) {
 	}
 
 	// First scheduler instance — compress
-	scheduler1 := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{})
+	scheduler1 := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{}, nil)
 	err = scheduler1.CompressSessionNow(ctx, sessionID)
 	require.NoError(t, err)
 
@@ -369,7 +369,7 @@ func TestCompressionIdempotency(t *testing.T) {
 	require.GreaterOrEqual(t, firstCount, 1, "first compression should produce at least one compressed observation")
 
 	// Simulate restart: create a new scheduler instance (same pool, different object)
-	scheduler2 := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{})
+	scheduler2 := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{}, nil)
 	err = scheduler2.CompressSessionNow(ctx, sessionID)
 	require.NoError(t, err)
 

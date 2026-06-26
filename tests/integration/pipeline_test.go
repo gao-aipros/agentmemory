@@ -67,7 +67,7 @@ func TestPipelineObserveToCompressed(t *testing.T) {
 	// Step 3: Compress observations via scheduler (replaces old async TriggerAsync)
 	llmSvc := NewMockLLMService()
 	embedSvc := service.NewEmbeddingServiceWithEmbedder(nil)
-	scheduler := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{})
+	scheduler := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{}, nil)
 	err = scheduler.CompressSessionNow(ctx, sessionID)
 	require.NoError(t, err, "CompressSessionNow should succeed")
 

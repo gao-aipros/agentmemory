@@ -14,3 +14,6 @@ UPDATE memories SET visibility = $2 WHERE id = $1;
 
 -- name: DeleteMemory :exec
 DELETE FROM memories WHERE id = $1;
+
+-- name: GetMemoriesByIDs :many
+SELECT * FROM memories WHERE id = ANY($1::text[]);

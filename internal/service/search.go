@@ -1,11 +1,12 @@
 package service
 
 // SearchWeights defines the coefficient weights for hybrid search scoring.
-// BM25 * 0.4 + Vector * 0.6 + Graph * 0.3
+// BM25 * 0.4 + Vector * 0.6 + Graph * 0.3 + Memory * 0.4
 type SearchWeights struct {
 	BM25   float64
 	Vector float64
 	Graph  float64
+	Memory float64
 }
 
 // DefaultSearchWeights returns the standard search weight configuration.
@@ -14,6 +15,7 @@ func DefaultSearchWeights() SearchWeights {
 		BM25:   0.4,
 		Vector: 0.6,
 		Graph:  0.3,
+		Memory: 0.4,
 	}
 }
 
@@ -38,4 +40,5 @@ type SearchResult struct {
 	VectorScore   float64
 	GraphScore    float64
 	CombinedScore float64
+	Source        string
 }

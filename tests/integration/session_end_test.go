@@ -61,13 +61,13 @@ func TestSessionEndTriggersPipeline(t *testing.T) {
 
 	// Set up session end handler with Scheduler
 	sessionSvc := service.NewSessionService(db.Pool)
-	scheduler := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{})
+	scheduler := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{}, nil)
 	summarizer := service.NewSummarizationService(db.Pool, llmSvc)
 	mode := service.DefaultConsolidationMode("member_choice", false)
 	mode.OwnerUserID = userID
 	consolidator := service.NewConsolidationService(db.Pool, llmSvc, mode)
 	reflector := service.NewReflectionService(db.Pool, 3600, llmSvc)
-	sessionEndH := service.NewSessionEndHandler(sessionSvc, scheduler, summarizer, consolidator, reflector, &sync.WaitGroup{}, semaphore.NewWeighted(20))
+	sessionEndH := service.NewSessionEndHandler(sessionSvc, scheduler, summarizer, consolidator, reflector, nil, nil, &sync.WaitGroup{}, semaphore.NewWeighted(20))
 
 	// End the session
 	err = sessionEndH.HandleSessionEnd(ctx, sessionID)
@@ -133,13 +133,13 @@ func TestSessionEndNoObservations(t *testing.T) {
 	// Set up session end handler without observations
 	llmSvc := NewMockLLMService()
 	embedSvc := service.NewEmbeddingServiceWithEmbedder(nil)
-	scheduler := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{})
+	scheduler := service.NewScheduler(db.Pool, llmSvc, embedSvc, service.SchedulerIntervals{}, nil)
 	sessionSvc := service.NewSessionService(db.Pool)
 	summarizer := service.NewSummarizationService(db.Pool, llmSvc)
 	mode := service.DefaultConsolidationMode("member_choice", false)
 	consolidator := service.NewConsolidationService(db.Pool, llmSvc, mode)
 	reflector := service.NewReflectionService(db.Pool, 3600, llmSvc)
-	sessionEndH := service.NewSessionEndHandler(sessionSvc, scheduler, summarizer, consolidator, reflector, &sync.WaitGroup{}, semaphore.NewWeighted(20))
+	sessionEndH := service.NewSessionEndHandler(sessionSvc, scheduler, summarizer, consolidator, reflector, nil, nil, &sync.WaitGroup{}, semaphore.NewWeighted(20))
 
 	// End session (should handle empty observations gracefully)
 	err = sessionEndH.HandleSessionEnd(ctx, sessionID)
