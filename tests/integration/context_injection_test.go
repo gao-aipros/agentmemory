@@ -172,7 +172,7 @@ func TestContextHookManager_SessionStart_Disabled(t *testing.T) {
 
 	// Gate disabled
 	gate := service.NewContextGateWithValue(false)
-	hookMgr := service.NewContextHookManager(ctxSvc, gate, nil)
+	hookMgr := service.NewContextHookManager(ctxSvc, gate)
 
 	result := hookMgr.TriggerSessionStart(ctx, "user-001")
 	require.NotNil(t, result)

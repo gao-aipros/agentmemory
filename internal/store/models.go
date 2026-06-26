@@ -50,21 +50,23 @@ type Crystal struct {
 }
 
 type GraphEdge struct {
-	ID         string
-	FromNodeID string
-	ToNodeID   string
-	EdgeType   string
-	Weight     float64
-	CreatedAt  pgtype.Timestamptz
+	ID           string
+	FromNodeID   string
+	ToNodeID     string
+	EdgeType     string
+	Weight       float64
+	CreatedAt    pgtype.Timestamptz
+	SourceObsIds []string
 }
 
 type GraphNode struct {
-	ID        string
-	NodeType  string
-	EntityID  string
-	Label     string
-	Metadata  []byte
-	CreatedAt pgtype.Timestamptz
+	ID           string
+	NodeType     string
+	EntityID     string
+	Label        string
+	Metadata     []byte
+	CreatedAt    pgtype.Timestamptz
+	SourceObsIds []string
 }
 
 type Insight struct {

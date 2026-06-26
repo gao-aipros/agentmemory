@@ -62,6 +62,19 @@ WITH RECURSIVE graph_traversal AS (
     WHERE gn.entity_id = ANY($1::text[])
       AND ($2::text IS NULL OR o.owner_user_id = $2)
 
+    UNION
+
+    -- LLM-extracted entity nodes: find nodes whose source_obs_ids overlap with seed observation IDs
+    SELECT
+        gn.id AS node_id,
+        gn.entity_id AS observation_id,
+        0 AS depth,
+        0.0::float AS graph_score
+    FROM graph_nodes gn
+    JOIN observations o ON gn.entity_id = o.id
+    WHERE gn.source_obs_ids && $1::text[]
+      AND ($2::text IS NULL OR o.owner_user_id = $2)
+
     UNION ALL
 
     SELECT
