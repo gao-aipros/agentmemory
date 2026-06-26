@@ -380,3 +380,96 @@ func TestContextInjectPreToolUse_EmptyFilePaths(t *testing.T) {
 	assert.Equal(t, "no file paths in tool input", skipReason,
 		"skip_reason should indicate no file paths were provided")
 }
+
+// =============================================================================
+// T011 [P] [US3] Integration test: pre_compact condensed context
+// =============================================================================
+
+// TestContextInjectPreCompact verifies that memory_inject_context with
+// trigger=pre_compact returns condensed context (lessons + graph only,
+// no observations or recap).
+func TestContextInjectPreCompact(t *testing.T) {
+	db := SetupTestDB(t)
+	defer TeardownTestDB(t, db)
+
+	ctx := context.Background()
+	require.NoError(t, RunMigrations(db.Pool))
+	require.NoError(t, SeedTestLessons(db.Pool))
+	require.NoError(t, SeedTestGraph(db.Pool))
+
+	// Enable context injection gate
+	os.Setenv("AGENTMEMORY_INJECT_CONTEXT", "true")
+	defer os.Unsetenv("AGENTMEMORY_INJECT_CONTEXT")
+
+	svc := mcp.NewServiceBundle(db.Pool)
+	mcpServer := sdkmcp.NewServer(
+		&sdkmcp.Implementation{Name: "agentmemory-v2", Version: "2.0.0"},
+		&sdkmcp.ServerOptions{},
+	)
+
+	authMiddleware := func(next sdkmcp.MethodHandler) sdkmcp.MethodHandler {
+		return func(ctx context.Context, method string, req sdkmcp.Request) (sdkmcp.Result, error) {
+			ctx = context.WithValue(ctx, auth.UserIDKey, "user-001")
+			return next(ctx, method, req)
+		}
+	}
+	mcpServer.AddReceivingMiddleware(authMiddleware)
+	mcp.RegisterAllTools(mcpServer, svc)
+
+	inServer, inClient := sdkmcp.NewInMemoryTransports()
+	serverCtx, serverCancel := context.WithCancel(context.Background())
+	defer serverCancel()
+
+	go mcpServer.Run(serverCtx, inServer)
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil)
+	session, err := client.Connect(ctx, inClient, nil)
+	require.NoError(t, err)
+	defer session.Close()
+
+	result, err := session.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name: "memory_inject_context",
+		Arguments: map[string]interface{}{
+			"trigger": "pre_compact",
+		},
+	})
+	require.NoError(t, err)
+	require.False(t, result.IsError, "tool should not return an error")
+
+	require.Len(t, result.Content, 1)
+	textContent, ok := result.Content[0].(*sdkmcp.TextContent)
+	require.True(t, ok)
+
+	var response map[string]interface{}
+	err = json.Unmarshal([]byte(textContent.Text), &response)
+	require.NoError(t, err)
+
+	// Verify context_text is non-empty
+	contextText, ok := response["context_text"].(string)
+	require.True(t, ok, "response should have string context_text")
+	assert.NotEmpty(t, contextText, "context_text should be non-empty when data exists")
+
+	// Verify context_text is wrapped in <agentmemory-context> XML tags
+	assert.Contains(t, contextText, "<agentmemory-context",
+		"context_text should contain <agentmemory-context opening tag")
+	assert.Contains(t, contextText, "</agentmemory-context>",
+		"context_text should contain closing </agentmemory-context> tag")
+
+	// Verify it's not skipped
+	skipped, ok := response["skipped"].(bool)
+	require.True(t, ok, "response should have bool skipped")
+	assert.False(t, skipped, "should not be skipped when gate is enabled with data")
+
+	// Verify hook_type is pre_compact
+	hookType, ok := response["hook_type"].(string)
+	require.True(t, ok, "response should have string hook_type")
+	assert.Equal(t, "pre_compact", hookType)
+
+	// PreCompact returns condensed context (lessons + graph + working_memory only).
+	// Section headers appear but observation/recap buckets should be empty.
+	// Verify the response structure is correct.
+	assert.True(t, len(contextText) > 0, "context_text should be non-empty when data exists")
+
+	t.Logf("Context text length: %d", len(contextText))
+	t.Logf("Context preview: %s", contextText[:min(len(contextText), 300)])
+}

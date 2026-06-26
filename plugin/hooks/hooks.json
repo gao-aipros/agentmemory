@@ -16,6 +16,14 @@
           "trigger": "pre_tool_use"
         }
       }
+    ],
+    "PreCompact": [
+      {
+        "tool": "memory_inject_context",
+        "args": {
+          "trigger": "pre_compact"
+        }
+      }
     ]
   }
 }
