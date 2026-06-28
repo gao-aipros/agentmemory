@@ -103,6 +103,20 @@ func SeedTestUser(pool *pgxpool.Pool) error {
 	return err
 }
 
+// SeedTestSession creates a test session for the default test user.
+func SeedTestSession(pool *pgxpool.Pool) error {
+	ctx := context.Background()
+	if err := SeedTestUser(pool); err != nil {
+		return err
+	}
+	_, err := pool.Exec(ctx, `
+		INSERT INTO sessions (id, user_id, team_id, status)
+		VALUES ('sess-001', 'user-001', NULL, 'ended')
+		ON CONFLICT DO NOTHING
+	`)
+	return err
+}
+
 // SeedTestObservations inserts test data for search testing.
 func SeedTestObservations(pool *pgxpool.Pool) error {
 	ctx := context.Background()
