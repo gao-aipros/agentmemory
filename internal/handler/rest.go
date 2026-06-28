@@ -143,27 +143,34 @@ func (h *RESTHandler) HandleObserve(w http.ResponseWriter, r *http.Request) {
 				ObservationID: obs.ID,
 				Status:        "recorded",
 				Skipped:       true,
-				SkipReason:    "gate_disabled",
+				SkipReason:    "context_injection_not_configured",
 			})
 			return
 		}
 
+		userID := GetUserIDFromContext(r.Context())
 		var result *service.ContextHookResult
 
 		switch req.Type {
 		case "session_start":
-			userID := GetUserIDFromContext(r.Context())
 			result = h.contextHookMgr.TriggerSessionStart(r.Context(), userID)
 		case "pre_tool_use":
-			userID := GetUserIDFromContext(r.Context())
 			result = h.contextHookMgr.TriggerPreToolUse(r.Context(), userID, req.Files)
 		case "pre_compact":
-			userID := GetUserIDFromContext(r.Context())
 			result = h.contextHookMgr.TriggerPreCompact(r.Context(), userID)
 		default:
 			result = &service.ContextHookResult{
 				Skipped:    true,
 				SkipReason: "non_context_trigger_type",
+			}
+		}
+
+		// Guard against nil result from a future switch branch that
+		// might be added without returning a value.
+		if result == nil {
+			result = &service.ContextHookResult{
+				Skipped:    true,
+				SkipReason: "internal_error",
 			}
 		}
 
