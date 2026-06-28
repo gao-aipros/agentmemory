@@ -401,20 +401,27 @@ func registerMemoryObserve(mcpServer *mcp.Server, svc *ServiceBundle) {
 		if a.Inject {
 			var hookResult *service.ContextHookResult
 
-			switch a.Type {
-			case "session_start":
-				userID := auth.GetUserIDFromContext(ctx)
-				hookResult = svc.ContextHooks.TriggerSessionStart(ctx, userID)
-			case "pre_tool_use":
-				userID := auth.GetUserIDFromContext(ctx)
-				hookResult = svc.ContextHooks.TriggerPreToolUse(ctx, userID, a.Files)
-			case "pre_compact":
-				userID := auth.GetUserIDFromContext(ctx)
-				hookResult = svc.ContextHooks.TriggerPreCompact(ctx, userID)
-			default:
+			if svc.ContextHooks == nil {
 				hookResult = &service.ContextHookResult{
 					Skipped:    true,
-					SkipReason: "non_context_trigger_type",
+					SkipReason: "context_injection_not_configured",
+				}
+			} else {
+				switch a.Type {
+				case "session_start":
+					userID := auth.GetUserIDFromContext(ctx)
+					hookResult = svc.ContextHooks.TriggerSessionStart(ctx, userID)
+				case "pre_tool_use":
+					userID := auth.GetUserIDFromContext(ctx)
+					hookResult = svc.ContextHooks.TriggerPreToolUse(ctx, userID, a.Files)
+				case "pre_compact":
+					userID := auth.GetUserIDFromContext(ctx)
+					hookResult = svc.ContextHooks.TriggerPreCompact(ctx, userID)
+				default:
+					hookResult = &service.ContextHookResult{
+						Skipped:    true,
+						SkipReason: "non_context_trigger_type",
+					}
 				}
 			}
 
