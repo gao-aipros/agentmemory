@@ -71,6 +71,4 @@ Bias heavily toward caution, clarity, and precision over raw speed.
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
 specs/001-agentmemory-v2-platform/plan.md
-specs/003-llm-graph-extraction/plan.md
-specs/004-project-profiles/plan.md
 <!-- SPECKIT END -->
