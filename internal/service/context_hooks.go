@@ -51,7 +51,7 @@ func (m *ContextHookManager) TriggerSessionStart(ctx context.Context, userID str
 		return &ContextHookResult{
 			HookType:   ContextHookSessionStart,
 			Skipped:    true,
-			SkipReason: "context injection disabled via AGENTMEMORY_INJECT_CONTEXT",
+			SkipReason: "gate_disabled",
 		}
 	}
 
@@ -96,7 +96,7 @@ func (m *ContextHookManager) TriggerPreToolUse(ctx context.Context, userID strin
 		return &ContextHookResult{
 			HookType:   ContextHookPreToolUse,
 			Skipped:    true,
-			SkipReason: "context injection disabled via AGENTMEMORY_INJECT_CONTEXT",
+			SkipReason: "gate_disabled",
 		}
 	}
 
@@ -104,7 +104,7 @@ func (m *ContextHookManager) TriggerPreToolUse(ctx context.Context, userID strin
 		return &ContextHookResult{
 			HookType:   ContextHookPreToolUse,
 			Skipped:    true,
-			SkipReason: "no file paths in tool input",
+			SkipReason: "no_file_paths",
 		}
 	}
 
@@ -147,7 +147,7 @@ func (m *ContextHookManager) TriggerPreCompact(ctx context.Context, userID strin
 		return &ContextHookResult{
 			HookType:   ContextHookPreCompact,
 			Skipped:    true,
-			SkipReason: "context injection disabled via AGENTMEMORY_INJECT_CONTEXT",
+			SkipReason: "gate_disabled",
 		}
 	}
 

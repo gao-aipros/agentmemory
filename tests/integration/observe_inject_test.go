@@ -306,8 +306,8 @@ func TestObserveInject_DisabledGate(t *testing.T) {
 	// Verify skip_reason explains why
 	skipReason, ok := response["skip_reason"].(string)
 	require.True(t, ok, "response should have string skip_reason")
-	assert.Contains(t, skipReason, "disabled",
-		"skip_reason should mention that context injection is disabled")
+	assert.Equal(t, "gate_disabled", skipReason,
+		"skip_reason should be gate_disabled when context injection is disabled")
 }
 
 // =============================================================================
@@ -408,8 +408,8 @@ func TestObserveInject_NonContextTrigger(t *testing.T) {
 	// Verify skip_reason
 	skipReason, ok := response["skip_reason"].(string)
 	require.True(t, ok, "response should have string skip_reason")
-	assert.Contains(t, skipReason, "trigger",
-		"skip_reason should mention the trigger type")
+	assert.Equal(t, "non_context_trigger_type", skipReason,
+		"skip_reason should be non_context_trigger_type for non-context triggers")
 }
 
 // =============================================================================
@@ -504,6 +504,6 @@ func TestObserveInject_PreToolUseEmptyFiles(t *testing.T) {
 	// Verify skip_reason explains why
 	skipReason, ok := response["skip_reason"].(string)
 	require.True(t, ok, "response should have string skip_reason")
-	assert.Contains(t, skipReason, "file",
-		"skip_reason should indicate no file paths were provided")
+	assert.Equal(t, "no_file_paths", skipReason,
+		"skip_reason should be no_file_paths for empty file_paths")
 }

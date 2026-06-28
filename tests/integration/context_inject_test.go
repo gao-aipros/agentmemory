@@ -185,8 +185,8 @@ func TestContextInjectSessionStart_DisabledGate(t *testing.T) {
 	// Verify skip_reason explains why
 	skipReason, ok := response["skip_reason"].(string)
 	require.True(t, ok, "response should have string skip_reason")
-	assert.Contains(t, skipReason, "disabled",
-		"skip_reason should explain that context injection is disabled")
+	assert.Equal(t, "gate_disabled", skipReason,
+		"skip_reason should be gate_disabled when context injection is disabled")
 }
 
 // =============================================================================
@@ -377,8 +377,8 @@ func TestContextInjectPreToolUse_EmptyFilePaths(t *testing.T) {
 	// Verify skip_reason explains why
 	skipReason, ok := response["skip_reason"].(string)
 	require.True(t, ok, "response should have string skip_reason")
-	assert.Equal(t, "no file paths in tool input", skipReason,
-		"skip_reason should indicate no file paths were provided")
+	assert.Equal(t, "no_file_paths", skipReason,
+		"skip_reason should indicate no_file_paths were provided")
 }
 
 // =============================================================================
