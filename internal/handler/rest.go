@@ -12,9 +12,10 @@ import (
 
 // RESTHandler holds the service dependencies for REST API endpoints.
 type RESTHandler struct {
-	obsSvc       *service.ObservationService
-	sessionSvc   *service.SessionService
-	sessionEndH  *service.SessionEndHandler
+	obsSvc         *service.ObservationService
+	sessionSvc     *service.SessionService
+	sessionEndH    *service.SessionEndHandler
+	contextHookMgr *service.ContextHookManager
 }
 
 // NewRESTHandler creates a new RESTHandler with the given service dependencies.
@@ -22,11 +23,13 @@ func NewRESTHandler(
 	obsSvc *service.ObservationService,
 	sessionSvc *service.SessionService,
 	sessionEndH *service.SessionEndHandler,
+	contextHookMgr *service.ContextHookManager,
 ) *RESTHandler {
 	return &RESTHandler{
-		obsSvc:      obsSvc,
-		sessionSvc:  sessionSvc,
-		sessionEndH: sessionEndH,
+		obsSvc:         obsSvc,
+		sessionSvc:     sessionSvc,
+		sessionEndH:    sessionEndH,
+		contextHookMgr: contextHookMgr,
 	}
 }
 
@@ -371,4 +374,63 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	w.Write(buf)
+}
+
+// contextInjectRequest is the JSON body for POST /v1/api/context/inject.
+type contextInjectRequest struct {
+	Trigger   string   `json:"trigger"`
+	FilePaths []string `json:"file_paths,omitempty"`
+}
+
+// contextInjectResponse is the JSON response for context injection.
+type contextInjectResponse struct {
+	ContextText string `json:"context_text"`
+	Trigger     string `json:"trigger"`
+	Skipped     bool   `json:"skipped"`
+	SkipReason  string `json:"skip_reason,omitempty"`
+}
+
+// HandleContextInject handles POST /v1/api/context/inject — return assembled context.
+func (h *RESTHandler) HandleContextInject(w http.ResponseWriter, r *http.Request) {
+	if h.contextHookMgr == nil {
+		writeError(w, http.StatusServiceUnavailable, "context injection not configured")
+		return
+	}
+
+	var req contextInjectRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	if req.Trigger == "" {
+		writeError(w, http.StatusBadRequest, "trigger is required")
+		return
+	}
+
+	userID := GetUserIDFromContext(r.Context())
+	if userID == "" {
+		userID = "default"
+	}
+
+	var result *service.ContextHookResult
+	switch req.Trigger {
+	case "session_start":
+		result = h.contextHookMgr.TriggerSessionStart(r.Context(), userID)
+	case "pre_tool_use":
+		result = h.contextHookMgr.TriggerPreToolUse(r.Context(), userID, req.FilePaths)
+	case "pre_compact":
+		result = h.contextHookMgr.TriggerPreCompact(r.Context(), userID)
+	default:
+		writeError(w, http.StatusBadRequest,
+			"invalid trigger: must be one of: session_start, pre_tool_use, pre_compact")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, contextInjectResponse{
+		ContextText: result.ContextText,
+		Trigger:     string(result.HookType),
+		Skipped:     result.Skipped,
+		SkipReason:  result.SkipReason,
+	})
 }
