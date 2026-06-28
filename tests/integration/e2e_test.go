@@ -15,7 +15,7 @@ import (
 // TestE2E_FullAgentSession runs a complete end-to-end agent session:
 // 1. Create user
 // 2. Start session
-// 3. Record observations across all 13 hook types
+// 3. Record observations across all 15 hook types
 // 4. Search verifies observations are findable
 // 5. Context injection assembles context
 // 6. Full pipeline verified
@@ -52,12 +52,12 @@ func TestE2E_FullAgentSession(t *testing.T) {
 	require.NoError(t, err, "should create test session")
 
 	// =========================================================================
-	// Step 3: Fire all 13 hooks in order with realistic observation data
+	// Step 3: Fire all 15 hooks in order with realistic observation data
 	// =========================================================================
 	obsSvc := service.NewObservationService(db.Pool)
 
 	allTypes := service.ValidHookTypes
-	assert.Len(t, allTypes, 13, "should be exactly 13 valid hook types")
+	assert.Len(t, allTypes, 15, "should be exactly 15 valid hook types")
 
 	// Realistic observation data for each hook type in a typical agent session
 	type hookData struct {
@@ -160,8 +160,8 @@ func TestE2E_FullAgentSession(t *testing.T) {
 		},
 		service.HookSessionEnd: {
 			title:      "Agent session ending",
-			narrative:  "Session completed successfully. Total duration: 12 minutes 34 seconds. Total observations: 13. Files modified: 1. All tasks completed. No unresolved items.",
-			facts:      `{"duration_seconds": 754, "total_observations": 13, "files_modified": 1, "tasks_completed": 1, "unresolved_items": 0}`,
+			narrative:  "Session completed successfully. Total duration: 12 minutes 34 seconds. Total observations: 15. Files modified: 1. All tasks completed. No unresolved items.",
+			facts:      `{"duration_seconds": 754, "total_observations": 15, "files_modified": 1, "tasks_completed": 1, "unresolved_items": 0}`,
 			concepts:   []string{"session", "completion", "summary", "success"},
 			files:      []string{},
 			importance: 0.9,
@@ -174,10 +174,26 @@ func TestE2E_FullAgentSession(t *testing.T) {
 			files:      []string{"internal/config/database.go"},
 			importance: 0.7,
 		},
+		service.HookStop: {
+			title:      "Agent stop requested",
+			narrative:  "User requested agent execution to stop. In-progress operations: 1 tool call pending (Read on internal/config/pool.go). Halting execution gracefully.",
+			facts:      `{"reason": "user_requested", "pending_tool_calls": 1, "pending_tool": "Read"}`,
+			concepts:   []string{"stop", "interrupt", "user_action"},
+			files:      []string{},
+			importance: 0.6,
+		},
+		service.HookDiagnostics: {
+			title:      "Agent diagnostics report",
+			narrative:  "Periodic diagnostics: Token usage 145000/200000 (72.5%), 12 observations recorded, 3 tool calls this session, 0 errors, memory usage nominal.",
+			facts:      `{"tokens_used": 145000, "tokens_max": 200000, "observations_recorded": 12, "tool_calls": 3, "errors": 0}`,
+			concepts:   []string{"diagnostics", "telemetry", "health", "monitoring"},
+			files:      []string{},
+			importance: 0.3,
+		},
 	}
 
-	// Record all 13 hook observations in order
-	recordedIDs := make([]string, 0, 13)
+	// Record all 15 hook observations in order
+	recordedIDs := make([]string, 0, 15)
 	for _, hookType := range allTypes {
 		data, ok := observations[hookType]
 		require.True(t, ok, "should have observation data for hook type: %s", hookType)
@@ -200,7 +216,7 @@ func TestE2E_FullAgentSession(t *testing.T) {
 		recordedIDs = append(recordedIDs, obs.ID)
 	}
 
-	assert.Len(t, recordedIDs, 13, "should have recorded all 13 hook observations")
+	assert.Len(t, recordedIDs, 15, "should have recorded all 15 hook observations")
 
 	// =========================================================================
 	// Step 4: Run search to verify observations are findable
@@ -226,7 +242,7 @@ func TestE2E_FullAgentSession(t *testing.T) {
 	}
 	assert.GreaterOrEqual(t, matchCount, 1,
 		"at least one recorded observation should appear in search results")
-	t.Logf("Search found %d/13 recorded observations", matchCount)
+	t.Logf("Search found %d/15 recorded observations", matchCount)
 
 	// Search for permission-related content
 	permResults, err := searchSvc.HybridSearch(ctx, "permission request write tool", 10, userID)
@@ -287,7 +303,7 @@ func TestE2E_FullAgentSession(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "ended", status)
 
-	// Verify all 13 observations are still present after session end
+	// Verify all 15 observations are still present after session end
 	obsRows, err := db.Pool.Query(ctx,
 		`SELECT COUNT(*) FROM observations WHERE session_id = $1`, sessionID,
 	)
@@ -299,8 +315,8 @@ func TestE2E_FullAgentSession(t *testing.T) {
 		err = obsRows.Scan(&obsCount)
 		require.NoError(t, err)
 	}
-	assert.Equal(t, 13, obsCount,
-		"all 13 observations should persist after session end")
+	assert.Equal(t, 15, obsCount,
+		"all 15 observations should persist after session end")
 
 	// Verify observation types are correct
 	typeRows, err := db.Pool.Query(ctx,
@@ -316,11 +332,11 @@ func TestE2E_FullAgentSession(t *testing.T) {
 		require.NoError(t, err)
 		recordedTypes = append(recordedTypes, obsType)
 	}
-	assert.Len(t, recordedTypes, 13, "should have 13 observation types")
+	assert.Len(t, recordedTypes, 15, "should have 15 observation types")
 	assert.Equal(t, allTypes, recordedTypes,
 		"observation types should match the order of ValidHookTypes")
 
-	t.Log("E2E pipeline verified: user creation -> session start -> 13 hooks -> search -> context injection -> session end")
+	t.Log("E2E pipeline verified: user creation -> session start -> 15 hooks -> search -> context injection -> session end")
 }
 
 // setupTestDBSkipable attempts to start a test database, returning an error

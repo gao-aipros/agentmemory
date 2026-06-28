@@ -212,6 +212,14 @@ func optStringProp(description string) map[string]interface{} {
 	return m
 }
 
+// optBoolProp returns an optional boolean schema property.
+func optBoolProp(description string) map[string]interface{} {
+	return map[string]interface{}{
+		"type":        "boolean",
+		"description": description,
+	}
+}
+
 // =============================================================================
 // RegisterAllTools creates the MCP server and registers all tools.
 // =============================================================================
@@ -324,6 +332,7 @@ func registerMemoryObserve(mcpServer *mcp.Server, svc *ServiceBundle) {
 		OwnerType   string   `json:"owner_type,omitempty"`
 		OwnerUserID string   `json:"owner_user_id,omitempty"`
 		OwnerTeamID string   `json:"owner_team_id,omitempty"`
+		Inject      bool     `json:"inject,omitempty"`
 	}
 
 	mcpServer.AddTool(&mcp.Tool{
@@ -343,6 +352,7 @@ func registerMemoryObserve(mcpServer *mcp.Server, svc *ServiceBundle) {
 				"owner_type":    optStringProp("Ownership type: user or team"),
 				"owner_user_id": optStringProp("Owner user ID"),
 				"owner_team_id": optStringProp("Owner team ID"),
+				"inject":        optBoolProp("Optional. If true, trigger context injection when type is a context trigger (session_start, pre_tool_use, pre_compact). Context text is appended to the response. Defaults to false."),
 			},
 			"required": []string{"type", "title", "narrative", "session_id"},
 		},
@@ -381,11 +391,50 @@ func registerMemoryObserve(mcpServer *mcp.Server, svc *ServiceBundle) {
 			}, nil
 		}
 
-		return jsonResult(map[string]interface{}{
+		response := map[string]interface{}{
 			"observation_id": obs.ID,
 			"session_id":     a.SessionID,
 			"status":         "recorded",
-		})
+		}
+
+		// If inject is true, attempt context injection based on the trigger type.
+		if a.Inject {
+			var hookResult *service.ContextHookResult
+
+			if svc.ContextHooks == nil {
+				hookResult = &service.ContextHookResult{
+					Skipped:    true,
+					SkipReason: "context_injection_not_configured",
+				}
+			} else {
+				switch a.Type {
+				case "session_start":
+					userID := auth.GetUserIDFromContext(ctx)
+					hookResult = svc.ContextHooks.TriggerSessionStart(ctx, userID)
+				case "pre_tool_use":
+					userID := auth.GetUserIDFromContext(ctx)
+					hookResult = svc.ContextHooks.TriggerPreToolUse(ctx, userID, a.Files)
+				case "pre_compact":
+					userID := auth.GetUserIDFromContext(ctx)
+					hookResult = svc.ContextHooks.TriggerPreCompact(ctx, userID)
+				default:
+					hookResult = &service.ContextHookResult{
+						Skipped:    true,
+						SkipReason: "non_context_trigger_type",
+					}
+				}
+			}
+
+			if hookResult != nil {
+				response["context_text"] = hookResult.ContextText
+				response["skipped"] = hookResult.Skipped
+				if hookResult.Skipped {
+					response["skip_reason"] = hookResult.SkipReason
+				}
+			}
+		}
+
+		return jsonResult(response)
 	})
 }
 

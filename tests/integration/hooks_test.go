@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestAllThirteenHookTypes tests that all 13 hook event types can be
+// TestAllFifteenHookTypes tests that all 15 hook event types can be
 // recorded as observations and stored correctly in the database.
-func TestAllThirteenHookTypes(t *testing.T) {
+func TestAllFifteenHookTypes(t *testing.T) {
 	// Parallel removed — shared container requires sequential execution
 
 	db := SetupTestDB(t)
@@ -35,9 +35,9 @@ func TestAllThirteenHookTypes(t *testing.T) {
 
 	obsSvc := service.NewObservationService(db.Pool)
 
-	// Record all 13 hook types
+	// Record all 15 hook types
 	allTypes := service.ValidHookTypes
-	assert.Len(t, allTypes, 13, "should be exactly 13 valid hook types")
+	assert.Len(t, allTypes, 15, "should be exactly 15 valid hook types")
 
 	recordedIDs := make([]string, 0, len(allTypes))
 	for _, hookType := range allTypes {
@@ -54,7 +54,7 @@ func TestAllThirteenHookTypes(t *testing.T) {
 		assert.Equal(t, hookType, obs.Type)
 		recordedIDs = append(recordedIDs, obs.ID)
 	}
-	assert.Len(t, recordedIDs, 13, "should have recorded 13 observations")
+	assert.Len(t, recordedIDs, 15, "should have recorded 15 observations")
 
 	// Verify they can be retrieved
 	queries := store.New(db.Pool)
@@ -63,7 +63,7 @@ func TestAllThirteenHookTypes(t *testing.T) {
 		Limit:     50,
 	})
 	require.NoError(t, err)
-	assert.Len(t, observations, 13, "should have 13 observations in the database")
+	assert.Len(t, observations, 15, "should have 15 observations in the database")
 
 	// Verify each type is present
 	typeSet := make(map[string]bool)

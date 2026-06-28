@@ -290,3 +290,161 @@ func TestCommitResponse_UsesCommitSHA(t *testing.T) {
 		t.Fatal("commitResponse JSON must NOT have 'sha' field (renamed to 'commit_sha')")
 	}
 }
+
+// =============================================================================
+// T012 [P] [US2] Unit test: REST observeRequest inject field deserialization
+// and response shaping
+// =============================================================================
+
+// TestObserveRequest_InjectFieldDeserialization verifies that the inject field
+// in observeRequest JSON deserializes correctly: true, false, and absent.
+func TestObserveRequest_InjectFieldDeserialization(t *testing.T) {
+	tests := []struct {
+		name       string
+		json       string
+		wantInject bool
+	}{
+		{
+			name:       "inject true",
+			json:       `{"session_id":"sess-1","type":"session_start","title":"Test","narrative":"Test","inject":true}`,
+			wantInject: true,
+		},
+		{
+			name:       "inject false",
+			json:       `{"session_id":"sess-1","type":"session_start","title":"Test","narrative":"Test","inject":false}`,
+			wantInject: false,
+		},
+		{
+			name:       "inject absent",
+			json:       `{"session_id":"sess-1","type":"session_start","title":"Test","narrative":"Test"}`,
+			wantInject: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var req observeRequest
+			err := json.Unmarshal([]byte(tc.json), &req)
+			if err != nil {
+				t.Fatalf("failed to unmarshal: %v", err)
+			}
+			if req.Inject != tc.wantInject {
+				t.Errorf("Inject = %v, want %v", req.Inject, tc.wantInject)
+			}
+		})
+	}
+}
+
+// TestObserveResponse_WithoutContextFields verifies that the basic
+// observeResponse JSON contains only observation_id and status fields
+// and never includes context injection fields.
+func TestObserveResponse_WithoutContextFields(t *testing.T) {
+	resp := observeResponse{
+		ObservationID: "obs-001",
+		Status:        "recorded",
+	}
+
+	data, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("failed to marshal observeResponse: %v", err)
+	}
+
+	var decoded map[string]interface{}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal JSON: %v", err)
+	}
+
+	if _, ok := decoded["observation_id"]; !ok {
+		t.Fatal("observeResponse JSON missing observation_id")
+	}
+	if _, ok := decoded["status"]; !ok {
+		t.Fatal("observeResponse JSON missing status")
+	}
+	// Must NOT have context injection fields
+	if _, ok := decoded["context_text"]; ok {
+		t.Error("context_text should NOT appear in basic observeResponse")
+	}
+	if _, ok := decoded["skipped"]; ok {
+		t.Error("skipped should NOT appear in basic observeResponse")
+	}
+	if _, ok := decoded["skip_reason"]; ok {
+		t.Error("skip_reason should NOT appear in basic observeResponse")
+	}
+}
+
+// TestObserveInjectResponse_ContextFieldsPresent verifies that the
+// observeInjectResponse JSON includes all context injection fields
+// when Skipped is false.
+func TestObserveInjectResponse_ContextFieldsPresent(t *testing.T) {
+	resp := observeInjectResponse{
+		ObservationID: "obs-001",
+		Status:        "recorded",
+		ContextText:   "<agentmemory-context>some context</agentmemory-context>",
+		Skipped:       false,
+	}
+
+	data, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("failed to marshal observeInjectResponse: %v", err)
+	}
+
+	var decoded map[string]interface{}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal JSON: %v", err)
+	}
+
+	if id, ok := decoded["observation_id"].(string); !ok || id != "obs-001" {
+		t.Errorf("observation_id = %v, want obs-001", decoded["observation_id"])
+	}
+	if st, ok := decoded["status"].(string); !ok || st != "recorded" {
+		t.Errorf("status = %v, want recorded", decoded["status"])
+	}
+	if ct, ok := decoded["context_text"].(string); !ok || ct != "<agentmemory-context>some context</agentmemory-context>" {
+		t.Errorf("context_text = %v, want <agentmemory-context>some context</agentmemory-context>", decoded["context_text"])
+	}
+	if sk, ok := decoded["skipped"].(bool); !ok || sk != false {
+		t.Errorf("skipped = %v, want false", decoded["skipped"])
+	}
+	// skip_reason should NOT appear when Skipped is false (omitempty on empty string)
+	if _, ok := decoded["skip_reason"]; ok {
+		t.Error("skip_reason should NOT appear when Skipped is false")
+	}
+}
+
+// TestObserveInjectResponse_SkippedWithReason verifies that when Skipped is
+// true, the skip_reason field appears in the JSON.
+func TestObserveInjectResponse_SkippedWithReason(t *testing.T) {
+	resp := observeInjectResponse{
+		ObservationID: "obs-001",
+		Status:        "recorded",
+		ContextText:   "",
+		Skipped:       true,
+		SkipReason:    "gate_disabled",
+	}
+
+	data, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("failed to marshal observeInjectResponse: %v", err)
+	}
+
+	var decoded map[string]interface{}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal JSON: %v", err)
+	}
+
+	if id, ok := decoded["observation_id"].(string); !ok || id != "obs-001" {
+		t.Errorf("observation_id = %v, want obs-001", decoded["observation_id"])
+	}
+	if st, ok := decoded["status"].(string); !ok || st != "recorded" {
+		t.Errorf("status = %v, want recorded", decoded["status"])
+	}
+	if ct, ok := decoded["context_text"].(string); !ok || ct != "" {
+		t.Errorf("context_text = %v, want empty string", decoded["context_text"])
+	}
+	if sk, ok := decoded["skipped"].(bool); !ok || sk != true {
+		t.Errorf("skipped = %v, want true", decoded["skipped"])
+	}
+	if sr, ok := decoded["skip_reason"].(string); !ok || sr != "gate_disabled" {
+		t.Errorf("skip_reason = %v, want gate_disabled", decoded["skip_reason"])
+	}
+}

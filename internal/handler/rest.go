@@ -46,12 +46,23 @@ type observeRequest struct {
 	Concepts    []string `json:"concepts,omitempty"`
 	Files       []string `json:"files,omitempty"`
 	Importance  *float64 `json:"importance,omitempty"`
+	Inject      bool     `json:"inject,omitempty"`
 }
 
 // observeResponse is the JSON response for a successful observation recording.
 type observeResponse struct {
 	ObservationID string `json:"observation_id"`
 	Status        string `json:"status"`
+}
+
+// observeInjectResponse is the JSON response when inject:true includes
+// context injection fields alongside the standard observation response.
+type observeInjectResponse struct {
+	ObservationID string `json:"observation_id"`
+	Status        string `json:"status"`
+	ContextText   string `json:"context_text"`
+	Skipped       bool   `json:"skipped"`
+	SkipReason    string `json:"skip_reason,omitempty"`
 }
 
 // HandleObserve handles POST /v1/api/observe — record a new observation.
@@ -121,6 +132,58 @@ func (h *RESTHandler) HandleObserve(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Warn("failed to record observation", "error", err)
 		writeError(w, http.StatusBadRequest, "observation failed")
+		return
+	}
+
+	// If inject is true, attempt context injection based on the trigger type.
+	if req.Inject {
+		if h.contextHookMgr == nil {
+			slog.Warn("context injection requested but context injection not configured")
+			writeJSON(w, http.StatusCreated, observeInjectResponse{
+				ObservationID: obs.ID,
+				Status:        "recorded",
+				Skipped:       true,
+				SkipReason:    "context_injection_not_configured",
+			})
+			return
+		}
+
+		userID := GetUserIDFromContext(r.Context())
+		var result *service.ContextHookResult
+
+		switch req.Type {
+		case "session_start":
+			result = h.contextHookMgr.TriggerSessionStart(r.Context(), userID)
+		case "pre_tool_use":
+			result = h.contextHookMgr.TriggerPreToolUse(r.Context(), userID, req.Files)
+		case "pre_compact":
+			result = h.contextHookMgr.TriggerPreCompact(r.Context(), userID)
+		default:
+			result = &service.ContextHookResult{
+				Skipped:    true,
+				SkipReason: "non_context_trigger_type",
+			}
+		}
+
+		// Guard against nil result from a future switch branch that
+		// might be added without returning a value.
+		if result == nil {
+			result = &service.ContextHookResult{
+				Skipped:    true,
+				SkipReason: "internal_error",
+			}
+		}
+
+		resp := observeInjectResponse{
+			ObservationID: obs.ID,
+			Status:        "recorded",
+			ContextText:   result.ContextText,
+			Skipped:       result.Skipped,
+		}
+		if result.Skipped {
+			resp.SkipReason = result.SkipReason
+		}
+		writeJSON(w, http.StatusCreated, resp)
 		return
 	}
 
