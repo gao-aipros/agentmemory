@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestValidateHookType_AllThirteenTypesAccepted(t *testing.T) {
+func TestValidateHookType_AllValidTypesAccepted(t *testing.T) {
 	validTypes := service.ValidHookTypes
-	assert.Len(t, validTypes, 13, "expected exactly 13 valid hook types")
+	assert.Len(t, validTypes, 15, "expected exactly 15 valid hook types")
 
 	for _, hookType := range validTypes {
 		t.Run(hookType, func(t *testing.T) {
@@ -26,7 +26,7 @@ func TestValidateHookType_InvalidTypeRejected(t *testing.T) {
 		"SESSION_START", // case-sensitive
 		"random_event",
 		"tool_use",             // missing pre_ or post_ prefix
-		"pre_tool_use_success", // not in the 13
+		"pre_tool_use_success", // not in the 15
 	}
 
 	for _, hookType := range invalidTypes {

@@ -1,29 +1,196 @@
 {
-  "_comment": "agentmemory Claude Code hook configuration — maps lifecycle events to MCP context injection",
+  "_comment": "agentmemory Claude Code hook configuration — 14 lifecycle events mapped to memory_observe for unified observation recording and context injection. Notes: (1) Diagnostics and PostCommit are forward-looking events — they are defined in the spec (FR-008) but are not yet standard Claude Code hook event names; they will silently pass through when those events arrive in a future Claude Code release. (2) See https://code.claude.com/docs/en/hooks for the list of standard hook event names.",
   "hooks": {
     "SessionStart": [
       {
-        "tool": "memory_inject_context",
-        "args": {
-          "trigger": "session_start"
+        "type": "mcp_tool",
+        "server": "agentmemory",
+        "tool": "memory_observe",
+        "input": {
+          "type": "session_start",
+          "title": "Session started",
+          "narrative": "A new agent session has been created. This event is a context trigger — relevant memories and slots are injected into the system prompt.",
+          "session_id": "${session_id}",
+          "inject": true
+        }
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "type": "mcp_tool",
+        "server": "agentmemory",
+        "tool": "memory_observe",
+        "input": {
+          "type": "user_prompt_submit",
+          "title": "User prompt submitted",
+          "narrative": "The user submitted a prompt to the agent.",
+          "session_id": "${session_id}"
         }
       }
     ],
     "PreToolUse": [
       {
-        "_comment": "Note: file_paths cannot be passed dynamically via Claude Code hooks (static args only). The tool will return skipped when file_paths is absent. For file-specific context, call memory_inject_context directly with trigger=pre_tool_use and file_paths=[...].",
+        "_comment": "Note: file_paths cannot be passed dynamically via Claude Code hooks (static args only). The tool will return skipped when file_paths is absent. For file-specific context, call memory_observe directly with type=pre_tool_use and files=[...].",
         "matcher": "Edit|Write",
-        "tool": "memory_inject_context",
-        "args": {
-          "trigger": "pre_tool_use"
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "agentmemory",
+            "tool": "memory_observe",
+            "input": {
+              "type": "pre_tool_use",
+              "title": "Pre-tool use",
+              "narrative": "Agent is about to use Edit or Write tool. This event is a context trigger — relevant context text is injected before the tool executes.",
+              "session_id": "${session_id}",
+              "inject": true
+            }
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "type": "mcp_tool",
+        "server": "agentmemory",
+        "tool": "memory_observe",
+        "input": {
+          "type": "post_tool_use",
+          "title": "Post-tool use",
+          "narrative": "Agent completed a tool call. The observation captures what was done and the result.",
+          "session_id": "${session_id}"
+        }
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "type": "mcp_tool",
+        "server": "agentmemory",
+        "tool": "memory_observe",
+        "input": {
+          "type": "post_tool_use_failure",
+          "title": "Tool use failure",
+          "narrative": "A tool call failed. Capturing the failure helps diagnose recurring issues.",
+          "session_id": "${session_id}"
         }
       }
     ],
     "PreCompact": [
       {
-        "tool": "memory_inject_context",
-        "args": {
-          "trigger": "pre_compact"
+        "type": "mcp_tool",
+        "server": "agentmemory",
+        "tool": "memory_observe",
+        "input": {
+          "type": "pre_compact",
+          "title": "Pre-compact",
+          "narrative": "The context window is approaching its limit and will be compacted. This event is a context trigger — key context is preserved before compaction.",
+          "session_id": "${session_id}",
+          "inject": true
+        }
+      }
+    ],
+    "SessionEnd": [
+      {
+        "type": "mcp_tool",
+        "server": "agentmemory",
+        "tool": "memory_observe",
+        "input": {
+          "type": "session_end",
+          "title": "Session ended",
+          "narrative": "The agent session has ended. Captures final state for post-session processing.",
+          "session_id": "${session_id}"
+        }
+      }
+    ],
+    "Notification": [
+      {
+        "type": "mcp_tool",
+        "server": "agentmemory",
+        "tool": "memory_observe",
+        "input": {
+          "type": "notification",
+          "title": "Notification received",
+          "narrative": "An asynchronous notification was received during the session.",
+          "session_id": "${session_id}"
+        }
+      }
+    ],
+    "Stop": [
+      {
+        "type": "mcp_tool",
+        "server": "agentmemory",
+        "tool": "memory_observe",
+        "input": {
+          "type": "stop",
+          "title": "Stop signal",
+          "narrative": "A stop signal was received, interrupting the current agent activity.",
+          "session_id": "${session_id}"
+        }
+      }
+    ],
+    "SubagentStart": [
+      {
+        "type": "mcp_tool",
+        "server": "agentmemory",
+        "tool": "memory_observe",
+        "input": {
+          "type": "subagent_start",
+          "title": "Subagent started",
+          "narrative": "A subagent was spawned to handle a delegated task.",
+          "session_id": "${session_id}"
+        }
+      }
+    ],
+    "SubagentStop": [
+      {
+        "type": "mcp_tool",
+        "server": "agentmemory",
+        "tool": "memory_observe",
+        "input": {
+          "type": "subagent_stop",
+          "title": "Subagent stopped",
+          "narrative": "A subagent completed or was terminated.",
+          "session_id": "${session_id}"
+        }
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "type": "mcp_tool",
+        "server": "agentmemory",
+        "tool": "memory_observe",
+        "input": {
+          "type": "task_completed",
+          "title": "Task completed",
+          "narrative": "A task tracked by the agent was marked complete.",
+          "session_id": "${session_id}"
+        }
+      }
+    ],
+    "PostCommit": [
+      {
+        "_comment": "Forward-looking: PostCommit is not yet a standard Claude Code hook event. Included per spec FR-008 for future support.",
+        "type": "mcp_tool",
+        "server": "agentmemory",
+        "tool": "memory_observe",
+        "input": {
+          "type": "post_commit",
+          "title": "Post-commit",
+          "narrative": "A git commit was created. Captures commit context for session-to-commit linking.",
+          "session_id": "${session_id}"
+        }
+      }
+    ],
+    "Diagnostics": [
+      {
+        "_comment": "Forward-looking: Diagnostics is not yet a standard Claude Code hook event. Included per spec FR-008 for future support.",
+        "type": "mcp_tool",
+        "server": "agentmemory",
+        "tool": "memory_observe",
+        "input": {
+          "type": "diagnostics",
+          "title": "Diagnostics event",
+          "narrative": "A diagnostics event was emitted during the session, carrying operational or performance information.",
+          "session_id": "${session_id}"
         }
       }
     ]

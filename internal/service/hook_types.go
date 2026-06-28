@@ -1,6 +1,6 @@
 package service
 
-// Hook event type constants — the 13 valid observation types captured
+// Hook event type constants — the 15 valid observation types captured
 // across the agent session lifecycle.
 const (
 	HookSessionStart       = "session_start"
@@ -16,9 +16,11 @@ const (
 	HookPostCommit         = "post_commit"
 	HookSessionEnd         = "session_end"
 	HookPermissionPrompt   = "permission_prompt"
+	HookStop               = "stop"
+	HookDiagnostics        = "diagnostics"
 )
 
-// ValidHookTypes is the list of all 13 recognized hook event types.
+// ValidHookTypes is the list of all 15 recognized hook event types.
 var ValidHookTypes = []string{
 	HookSessionStart,
 	HookUserPromptSubmit,
@@ -33,9 +35,11 @@ var ValidHookTypes = []string{
 	HookPostCommit,
 	HookSessionEnd,
 	HookPermissionPrompt,
+	HookStop,
+	HookDiagnostics,
 }
 
-// ValidateHookType returns true if the given type is one of the 13 valid hook types.
+// ValidateHookType returns true if the given type is one of the 15 valid hook types.
 func ValidateHookType(hookType string) bool {
 	for _, valid := range ValidHookTypes {
 		if hookType == valid {

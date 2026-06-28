@@ -199,7 +199,7 @@ func TestMCPRouteMethodSupport(t *testing.T) {
 // REST Hook Events Test (T106)
 // =============================================================================
 
-// TestAllHookTypesViaREST tests that all 13 hook event types are accepted
+// TestAllHookTypesViaREST tests that various hook event type strings are accepted
 // by the observe endpoint (without a real DB, we test request deserialization).
 func TestAllHookTypesViaREST(t *testing.T) {
 	allHookTypes := []string{
@@ -208,14 +208,16 @@ func TestAllHookTypesViaREST(t *testing.T) {
 		"user_prompt_submit",
 		"pre_tool_use",
 		"post_tool_use",
+		"post_tool_use_failure",
 		"pre_compact",
-		"post_compact",
-		"pre_system_reminder",
-		"post_system_reminder",
+		"subagent_start",
+		"subagent_stop",
 		"notification",
-		"permission_prompt", // see fix in commit 99e77b5
-		"human_input",
-		"error",
+		"task_completed",
+		"post_commit",
+		"permission_prompt",
+		"stop",
+		"diagnostics",
 	}
 
 	for _, hookType := range allHookTypes {
