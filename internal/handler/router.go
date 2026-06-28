@@ -32,7 +32,7 @@ func NewRouter(bundle *mcp.ServiceBundle, cfg *config.Config) chi.Router {
 		pool = bundle.Pool
 
 		// Use services from the shared bundle (created once at startup)
-		restHandler = NewRESTHandler(bundle.Observation, bundle.Session, bundle.SessionEnd)
+		restHandler = NewRESTHandler(bundle.Observation, bundle.Session, bundle.SessionEnd, bundle.ContextHooks)
 
 		// Auth services
 		authHandler = NewAuthHandler(cfg, bundle.User, bundle.Team, bundle.Members)
@@ -155,6 +155,7 @@ func NewRouter(bundle *mcp.ServiceBundle, cfg *config.Config) chi.Router {
 		r.Route("/v1/api", func(r chi.Router) {
 			if restHandler != nil {
 				r.Post("/observe", restHandler.HandleObserve)
+				r.Post("/context/inject", restHandler.HandleContextInject)
 				r.Post("/session/start", restHandler.HandleStartSession)
 				r.Post("/session/end", restHandler.HandleEndSession)
 				r.Post("/session/commit", restHandler.HandleCommitSession)
